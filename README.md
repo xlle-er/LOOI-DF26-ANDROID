@@ -11,7 +11,7 @@ Kotlin + Jetpack Compose 原生应用。本地 WebView 保留原始眼睛及动�
 
 ### 下载与使用
 
-在 [Releases](https://github.com/xlle-er/LOOI-DF26-ANDROID/releases) 下载 `LOOI-Android-0.2.0-debug.apk`，在 Android 7.0（API 24）或更新设备上安装。允许当前下载来源安装应用；校验下载附件的 `SHA256SUMS.txt`。这是**调试签名的实验预览版**，没有商店发布，也未完成机器人真机验收。
+在 [Releases](https://github.com/xlle-er/LOOI-DF26-ANDROID/releases) 下载 `LOOI-Android-0.2.1-debug.apk`，在 Android 7.0（API 24）或更新设备上安装。允许当前下载来源安装应用；校验下载附件的 `SHA256SUMS.txt`。这是**调试签名的实验预览版**，没有商店发布，也未完成机器人真机验收。
 
 1. 默认离线陪伴，无需 API 密钥或机器人即可查看眼睛。在线 AI 使用自己的服务凭据。
 2. 设置中选择跟随系统、简体中文或 English。**AI 回复优先遵循当前语音或文字的语言，界面语言仅作回退。**
@@ -32,7 +32,7 @@ Kotlin + Jetpack Compose 原生应用。本地 WebView 保留原始眼睛及动�
 
 | 项目 | 当前记录 |
 | --- | --- |
-| 逻辑测试 | 58 项通过（0.2.0） |
+| 逻辑测试 | 59 项通过（0.2.1） |
 | 眼睛 / WebView 资源回归 | 5 项通过 |
 | Android 模拟器界面冒烟 | 1 项通过，含双语、Activity 重建和实际眼睛像素 |
 | 本地模型执行 | 1 项明确跳过；当前 Apple Silicon ARM64 模拟器存在 SVE/SME 兼容问题 |
@@ -89,7 +89,7 @@ A native Kotlin + Jetpack Compose companion app. A restricted local WebView rend
 
 ### Download and first use
 
-Download `LOOI-Android-0.2.0-debug.apk` from [Releases](https://github.com/xlle-er/LOOI-DF26-ANDROID/releases). Requires Android 7.0 / API 24 or later. Allow installation from your download source and verify `SHA256SUMS.txt`. This is a **debug-signed experimental preview**, with physical robot acceptance still pending.
+Download `LOOI-Android-0.2.1-debug.apk` from [Releases](https://github.com/xlle-er/LOOI-DF26-ANDROID/releases). Requires Android 7.0 / API 24 or later. Allow installation from your download source and verify `SHA256SUMS.txt`. This is a **debug-signed experimental preview**, with physical robot acceptance still pending.
 
 1. Offline companionship works without credentials or a robot. Online AI uses your own provider credentials.
 2. Choose system language, Simplified Chinese or English. **AI prioritizes the language of your current spoken or written message**, with UI language as fallback.
@@ -107,7 +107,7 @@ Bundled EfficientDet-Lite0 int8 runs on CPU at up to 10 Hz without network infer
 
 ### Verification status
 
-58 logic tests passed for 0.2.0; 5 face regression tests passed in the earlier acceptance run. One API 35 emulator UI smoke test passed, covering both languages, Activity recreation and visible eye pixels. Lint reported zero errors; the debug APK signature was verified. One local model execution test was explicitly skipped because the current Apple Silicon ARM64 emulator reports incompatible SVE/SME capabilities. Live media, physical BLE, real camera detection and forward following remain unverified on hardware. The 20-turn and 30-minute acceptance runs are pending. See [acceptance record](docs/acceptance.md) and [architecture](docs/architecture.md).
+59 logic tests passed for 0.2.1; 5 face regression tests passed in the earlier acceptance run. One API 35 emulator UI smoke test passed, covering both languages, Activity recreation and visible eye pixels. Lint reported zero errors; the debug APK signature was verified. One local model execution test was explicitly skipped because the current Apple Silicon ARM64 emulator reports incompatible SVE/SME capabilities. Live media, physical BLE, real camera detection and forward following remain unverified on hardware. The 20-turn and 30-minute acceptance runs are pending. See [acceptance record](docs/acceptance.md) and [architecture](docs/architecture.md).
 
 ### Build and configuration
 
@@ -140,3 +140,17 @@ Remove secrets, full device identifiers, private images and conversations before
 Device management in My robots provides BLE provisioning, LAN discovery/Wi-Fi connection, motor calibration, 300 ms tests, stop, and local/online OTA. Settings are persisted on the ESP. Connection no longer triggers an identification nod. See the Firmware repository for installation, partitions and the management password.
 
 HTTP device connections accept only private IPv4 addresses. DHCP addresses are validated at runtime rather than enumerated in the Android network security XML. Online release downloads require trusted HTTPS.
+
+## 热点升级与联网恢复 / Hotspot update and internet recovery
+
+先在有互联网时检查版本、下载并校验固件，再连接 ESP 热点上传。网页使用本机浏览器存储，App 使用自己的文件存储；已下载文件可在页面或 App 重启后继续使用。重新上传前再次校验，失败下载不会替换上一个完整包。
+
+“升级后关闭 ESP 热点”默认开启，需要设备固件 2.0.1 或更新版本支持。只有成功校验并切换到 OTA 目标分区后，下次启动才跳过自动开启热点；不会删除网络或方向设置，BLE 仍可用，长按 BOOT 3 秒可重新打开热点。该设置只影响升级后的这次启动，普通断电重启仍按原配网策略工作。关闭设备热点不保证手机自动恢复互联网，启动 AI 陪伴前应检查手机流量或可上网的 Wi-Fi。
+
+从仅热点 OTA 初版或 2.0.0 首次升级时，旧固件无法保存这个选项：先下载 `.bin`，再通过 `http://192.168.4.1/` 的设备面板上传，完成后手动断开热点。App/网页管理接口不保证兼容仅热点 OTA 初版。2.0.1 的关闭开关对安装该版本之后发起的 OTA 生效。
+
+Download and verify firmware while online, then join the ESP hotspot to upload. Prepared packages survive page/app restarts and are verified again before upload. Failed downloads preserve the last complete package.
+
+Close ESP hotspot after update is enabled by default and requires device firmware 2.0.1+. After a verified OTA activates its target partition, the next boot skips automatic hotspot startup. Network and calibration settings remain intact; BLE stays available and holding BOOT for three seconds reopens the hotspot. This is a one-boot choice; ordinary subsequent power cycles use normal provisioning behavior. Your phone decides whether internet reconnects automatically. Restore mobile data or internet Wi-Fi before AI companionship.
+
+The initial hotspot-only firmware and 2.0.0 cannot store this option. For the first upgrade, download the application `.bin`, join the hotspot and upload it through the device's own panel at `http://192.168.4.1/`, then leave the hotspot manually. Modern management APIs are not guaranteed on the initial firmware. The 2.0.1 option applies to OTA operations initiated after that firmware is installed.

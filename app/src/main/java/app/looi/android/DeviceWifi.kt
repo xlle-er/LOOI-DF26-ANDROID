@@ -15,6 +15,8 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 class DeviceWifiClient(context: Context, private val scope: CoroutineScope) {
+    private val firmwareCache=FirmwarePackageCache(java.io.File(context.filesDir,"firmware"))
+    val prepared=MutableStateFlow(runCatching{firmwareCache.read()?.first}.getOrNull())
     val devices=MutableStateFlow<List<Pair<String,String>>>(emptyList())
     val info=MutableStateFlow(JSONObject())
     var connected=false; private set
@@ -90,11 +92,11 @@ class DeviceWifiClient(context: Context, private val scope: CoroutineScope) {
         val req=builder.build()
         return withContext(Dispatchers.IO){http.newCall(req).execute().use{r->val body=r.body?.string().orEmpty();check(r.isSuccessful){"Device HTTP ${r.code}"};JSONObject(body)}}
     }
-    suspend fun upload(bytes: ByteArray,name: String,expectedSha: String?=null) {
+    suspend fun upload(bytes: ByteArray,name: String,expectedSha: String?=null,closeHotspot: Boolean=true) {
         check(connected) { "Connect to the device over Wi-Fi first" }
         require(bytes.size in 32..3145728 && name.endsWith(".bin") && bytes[0]==0xe9.toByte()){ "Select an ESP32-S3 application .bin" }
         val sha=sha256(bytes);require(expectedSha==null||sha.equals(expectedSha,true)){"Firmware SHA-256 mismatch"}
-        heartbeat?.cancel();command(JSONObject().put("type","ota_start"))
+        heartbeat?.cancel();command(JSONObject().put("type","ota_start").put("close_ap_after_update",closeHotspot))
         val form=MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("firmware",name,bytes.toRequestBody("application/octet-stream".toMediaType())).build()
         val req=Request.Builder().url("http://$host/update").header("Authorization",Credentials.basic("admin",password)).header("X-OTA-Token",token).header("X-Looi-Client",clientId).header("X-Firmware-Size",bytes.size.toString()).header("X-Firmware-SHA256",sha).post(form).build()
         withContext(Dispatchers.IO){http.newBuilder().callTimeout(180,TimeUnit.SECONDS).readTimeout(180,TimeUnit.SECONDS).build().newCall(req).execute().use{r->val result=JSONObject(r.body?.string().orEmpty());check(r.isSuccessful&&result.optBoolean("accepted")){result.optString("message","Update failed")}}}
@@ -107,11 +109,14 @@ class DeviceWifiClient(context: Context, private val scope: CoroutineScope) {
         require(m.getString("chip")=="ESP32-S3" && m.getString("partition")=="app3M_fat9M_16MB" && m.getInt("size") in 32..3145728 && m.getString("sha256").matches(Regex("[0-9a-fA-F]{64}"))){"Incompatible firmware release"}
         require(m.getString("url").startsWith("https://github.com/xlle-er/LOOI-DF26-Firmware/releases/")){"Untrusted firmware URL"}
     }
-    suspend fun installRelease(m: JSONObject) {
+    suspend fun prepareRelease(m: JSONObject) {
         validateRelease(m)
-        val bytes=withContext(Dispatchers.IO){fetchHttps(m.getString("url"),3145728)}
-        require(bytes.size==m.getInt("size")){"Firmware size mismatch"}
-        upload(bytes,"looi-s3.bin",m.getString("sha256"))
+        withContext(Dispatchers.IO){val bytes=fetchHttps(m.getString("url"),3145728);firmwareCache.save(m,bytes)}
+        prepared.value=JSONObject(m.toString())
+    }
+    suspend fun installPrepared(closeHotspot: Boolean=true) {
+        val cached=withContext(Dispatchers.IO){firmwareCache.read()}?:error("Download firmware before joining the ESP hotspot")
+        upload(cached.second,"looi-s3.bin",cached.first.getString("sha256"),closeHotspot)
     }
     private fun fetchHttps(url: String,limit: Int): ByteArray {
         var next=url

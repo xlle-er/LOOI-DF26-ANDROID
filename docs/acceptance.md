@@ -74,3 +74,9 @@ The staged source snapshot excludes caches, local.properties, signing secrets, r
 2026-10-16：58 项单元测试通过，Lint 0 error；0.2.0 / versionCode 2 APK 构建通过，资源哈希与 ARM64 对齐通过。已将新旧 APK 签名证书摘要比对，结果相同；包名不变，满足覆盖安装的版本和签名条件，未在真实手机执行覆盖安装。新配网、Wi-Fi 控制、方向校准及 OTA 仍待真机验收。此前模型执行跳过及硬件待测状态保留。
 
 58 unit tests passed; lint has zero errors. APK build, packaged resources, ARM64 alignment, version increment and matching old/new signing certificates were verified. Physical in-place installation, provisioning, Wi-Fi control, calibration and OTA remain untested. Earlier model execution was skipped; that result has not been changed.
+
+## 0.2.1 离线热点升级 / Offline hotspot updates
+
+2026-10-16：59 项单元测试通过，Lint 0 error，APK 构建通过。新增真实磁盘缓存测试：保存后重新创建缓存对象仍可读取、错误下载不覆盖已校验包、缓存篡改会在上传前拒绝。versionCode 增至 3；签名与之前版本一致。网页模拟升级不算 Android/iOS 真机测试；真实热点切换、自动恢复互联网及 OTA 仍待验收。
+
+59 unit tests passed; lint has zero errors and the APK builds. Disk-cache tests cover persistence, preservation after failed verification and corruption rejection. Version code is 3 with the original signing identity. Physical network switching and OTA remain pending.

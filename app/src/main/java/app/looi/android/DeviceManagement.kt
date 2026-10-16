@@ -17,11 +17,13 @@ import org.json.JSONObject
 @OptIn(ExperimentalLayoutApi::class)
 @Composable fun DeviceManagementDialog(r: LooiRuntime,onDismiss: ()->Unit) {
     val scope=rememberCoroutineScope();val context=LocalContext.current
+    var closeHotspot by remember{mutableStateOf(true)}
     var address by remember{mutableStateOf("192.168.4.1")};var admin by remember{mutableStateOf("12345678")}
     var ssid by remember{mutableStateOf("")};var password by remember{mutableStateOf("")}
     var left by remember{mutableStateOf(true)};var right by remember{mutableStateOf(false)};var swap by remember{mutableStateOf(false)}
     var busy by remember{mutableStateOf(false)};var message by remember{mutableStateOf("")};var info by remember{mutableStateOf(JSONObject())}
     var release by remember{mutableStateOf<JSONObject?>(null)};var networks by remember{mutableStateOf<List<String>>(emptyList())}
+    val prepared by r.robot.wifi.prepared.collectAsState()
     val found by r.robot.wifi.devices.collectAsState()
     fun job(block:suspend ()->Unit){scope.launch{busy=true;try{block()}catch(e:CancellationException){throw e}catch(e:Exception){message=e.message.orEmpty()}finally{busy=false}}}
     suspend fun command(type:String,extra:JSONObject=JSONObject()):JSONObject=r.robot.manage(extra.put("type",type),admin)
@@ -29,7 +31,7 @@ import org.json.JSONObject
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null)job{
         require(r.robot.wifi.connected){t("请先通过 Wi-Fi 连接设备","Connect to the device over Wi-Fi first")}
         val bytes=withContext(Dispatchers.IO){context.contentResolver.openInputStream(uri)!!.use{input->val out=java.io.ByteArrayOutputStream();val buf=ByteArray(8192);while(true){val n=input.read(buf);if(n<0)break;require(out.size()+n<=3145728){"Firmware exceeds 3 MB"};out.write(buf,0,n)};out.toByteArray()}}
-        r.robot.wifi.upload(bytes,"looi-s3.bin");r.robot.disconnect();message=t("升级成功，请重连并核对版本","Update accepted. Reconnect and verify the version")
+        r.robot.wifi.upload(bytes,"looi-s3.bin",closeHotspot=closeHotspot);r.robot.disconnect();message=t("升级成功，请断开 ESP 热点并恢复互联网，再使用 AI 陪伴；重连设备核对版本","Update accepted. Leave the ESP hotspot and restore internet before AI companionship; reconnect to verify the version")
     }}
     DisposableEffect(Unit){onDispose{r.robot.wifi.stopDiscovery()}}
     AlertDialog(onDismissRequest={if(!busy)onDismiss()},title={Text(t("设备管理","Device management"))},text={
@@ -69,10 +71,19 @@ import org.json.JSONObject
                 Button(onClick={scope.launch{runCatching{command("stop")}}}){Text(t("立即停止","Stop now"))}
             }
             HorizontalDivider();Text(t("固件升级","Firmware update"),style=MaterialTheme.typography.titleMedium)
-            Text(t("升级上传使用 Wi-Fi；支持本地 .bin 和在线版本。","Updates use Wi-Fi. Choose a local .bin or an online release."))
+            Text(t("1. 有网时先下载并校验固件。2. 连接 ESP 热点。3. 连接设备，上传已保存固件。","1. Download and verify while online. 2. Join the ESP hotspot. 3. Connect the device and upload the saved firmware."))
+            Text(t("初版仅热点 OTA 固件：先下载 .bin，再通过热点的 192.168.4.1 面板选择本地文件升级。","Initial hotspot-only firmware: download the .bin first, then upload it using the device panel at 192.168.4.1."))
+            Text(t("升级后请及时断开 ESP 热点，恢复流量或可上网的 Wi-Fi，再启动 AI 陪伴。","After updating, leave the ESP hotspot and restore mobile data or internet Wi-Fi before starting AI companionship."))
+            if(info.length()>0&&!info.optBoolean("ota_ap_shutdown_supported"))Text(t("当前设备固件不支持自动关闭，本次升级后请手动断开热点。","Current firmware requires manually leaving the hotspot after this update."))
+            Row{Switch(closeHotspot,{closeHotspot=it},enabled=!busy);Text(t("升级后关闭 ESP 热点","Close ESP hotspot after update"))}
+            Text(t("需要设备固件支持；手机是否自动恢复互联网由系统决定。长按 BOOT 3 秒可重新开启热点。","Requires device firmware support. Your phone decides whether internet reconnects automatically. Hold BOOT for 3 seconds to reopen the hotspot."))
             Button(onClick={picker.launch(arrayOf("*/*"))},enabled=!busy){Text(t("选择 .bin 升级","Choose .bin"))}
             OutlinedButton(onClick={job{release=r.robot.wifi.release();message=t("在线版本：","Online version: ")+release!!.getString("version")}},enabled=!busy){Text(t("检查在线版本","Check for updates"))}
-            release?.let{manifest->Button(onClick={job{r.robot.wifi.installRelease(manifest);r.robot.disconnect();message=t("升级成功，请重连核对版本","Update accepted. Reconnect and verify the version")}},enabled=!busy){Text(t("安装 ","Install ")+manifest.getString("version"))}}
+            Button(onClick={job{message=t("正在下载并校验，请保持互联网连接","Downloading and verifying; stay online");val manifest=release?:r.robot.wifi.release();r.robot.wifi.prepareRelease(manifest);release=manifest;message=t("固件已保存，可以连接 ESP 热点后离线上传","Firmware saved. Join the ESP hotspot to upload offline")}},enabled=!busy){Text(t("先下载固件","Download firmware first"))}
+            prepared?.let{manifest->
+                Text(t("已下载，可离线上传：","Ready offline: ")+manifest.getString("version"))
+                Button(onClick={job{r.robot.wifi.installPrepared(closeHotspot);r.robot.disconnect();message=t("升级成功，请断开 ESP 热点并恢复互联网，再使用 AI 陪伴；重连设备核对版本","Update accepted. Leave the ESP hotspot and restore internet before AI companionship; reconnect to verify the version")}},enabled=!busy&&r.robot.wifi.connected){Text(t("上传已保存固件","Upload saved firmware"))}
+            }
             TextButton(onClick={job{command("ota_exit");message=t("已退出升级模式","Update mode exited")}},enabled=!busy){Text(t("退出升级模式","Exit update mode"))}
             if(busy)LinearProgressIndicator(Modifier.fillMaxWidth());Text(message)
         }
