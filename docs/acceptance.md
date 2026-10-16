@@ -80,3 +80,16 @@ The staged source snapshot excludes caches, local.properties, signing secrets, r
 2026-10-16：59 项单元测试通过，Lint 0 error，APK 构建通过。新增真实磁盘缓存测试：保存后重新创建缓存对象仍可读取、错误下载不覆盖已校验包、缓存篡改会在上传前拒绝。versionCode 增至 3；签名与之前版本一致。网页模拟升级不算 Android/iOS 真机测试；真实热点切换、自动恢复互联网及 OTA 仍待验收。
 
 59 unit tests passed; lint has zero errors and the APK builds. Disk-cache tests cover persistence, preservation after failed verification and corruption rejection. Version code is 3 with the original signing identity. Physical network switching and OTA remain pending.
+
+
+## 0.2.2 遥控器 / Remote control（2026-10-16）
+
+- 新增设置页及陪伴页遥控入口、摇杆/方向键切换、0.05–0.30 速度滑条（默认 0.15）、紧急停止与失败重试；保留中英双语。行为参照 iOS 遥控器。
+- 打开先等待真实停止确认，暂停 AI 身体动作和跟随；关闭不自动恢复运动许可。400 ms 短租期、100 ms ACK 后续发、仅保留最新输入；松手、滑出范围、手势取消、关闭、后台或故障停止。
+- 从只包含已提交改动的独立检出目录构建，排除工作区同时开发但尚未提交的 Wi-Fi 修改。版本 0.2.2 / versionCode 4，原有调试签名。
+- **74/74 单元测试通过**，其中 15 项新增遥控测试覆盖死区/限幅、进入停止确认、双指排除、旧手势隔离、慢 ACK 最新意图、超时、拒绝、模式切换、关闭重开、断线、无障碍脉冲和优先级。
+- **2/2 Android 模拟器测试通过**：遥控 UI 测试使用模拟机器人/ACK，验证方向键按住/松手、摇杆拖动/取消、无障碍方向动作及关闭；原有 AppSmokeTest 验证双语、离线眼睛和 Activity 重建。
+- Lint 0 error，APK 构建、签名及资源检查通过。本次未重跑本地模型执行测试，既有模拟器兼容限制不变；真实 BLE / Wi-Fi 运动、后台物理停止、速度和轮子方向仍待实机验证。
+- `docs/screenshots/remote-emulator.png` 来自模拟器 UI 测试，连接状态为模拟 ACK，不代表实体机器人已连接或通过验收。
+
+The 0.2.2 remote mirrors iOS joystick/D-pad behavior with explicit hold-to-drive, ACK-gated latest-input renewal, stop-first entry and fault inhibition. AI body actions and following pause during manual control; closing does not restore autonomous permission. All 74 unit tests passed, including 15 new remote tests. Two emulator tests passed: remote touch/cancel/accessibility/close with a fake robot transport, and the existing bilingual offline-companion recreation smoke test. Lint has zero errors. The APK was built from an isolated committed snapshot, excluding concurrent uncommitted Wi-Fi work. Real robot direction, speed, BLE/Wi-Fi ACKs and physical stopping remain unverified. Screenshot connection status is simulated.

@@ -38,9 +38,9 @@ Kotlin + Jetpack Compose 原生应用。本地 WebView 保留原始眼睛及动�
 
 | 项目 | 当前记录 |
 | --- | --- |
-| 逻辑测试 | 59 项通过（0.2.1） |
+| 逻辑测试 | 74 项通过（0.2.2，含 15 项遥控测试） |
 | 眼睛 / WebView 资源回归 | 5 项通过 |
-| Android 模拟器界面冒烟 | 1 项通过，含双语、Activity 重建和实际眼睛像素 |
+| Android 模拟器界面 | 2 项通过：遥控触摸/取消/无障碍操作，以及双语、Activity 重建和实际眼睛像素 |
 | 本地模型执行 | 1 项明确跳过；当前 Apple Silicon ARM64 模拟器存在 SVE/SME 兼容问题 |
 | Lint / APK | 0 error；已构建并校验调试签名 |
 | 真机 Live、BLE、目标检测及前进跟随 | 尚未验收；20 轮对话、30 分钟运行等均待测 |
@@ -119,7 +119,7 @@ Bundled EfficientDet-Lite0 int8 runs on CPU at up to 10 Hz without network infer
 
 ### Verification status
 
-59 logic tests passed for 0.2.1; 5 face regression tests passed in the earlier acceptance run. One API 35 emulator UI smoke test passed, covering both languages, Activity recreation and visible eye pixels. Lint reported zero errors; the debug APK signature was verified. One local model execution test was explicitly skipped because the current Apple Silicon ARM64 emulator reports incompatible SVE/SME capabilities. Live media, physical BLE, real camera detection and forward following remain unverified on hardware. The 20-turn and 30-minute acceptance runs are pending. See [acceptance record](docs/acceptance.md) and [architecture](docs/architecture.md).
+74 logic tests passed for 0.2.2 (including 15 remote tests); 5 face regression tests passed in the earlier acceptance run. Two API 35 emulator UI tests passed: remote hold/release/drag/cancel/accessibility with simulated ACKs, and the bilingual companion test with Activity recreation and visible eye pixels. Lint reported zero errors; the debug APK signature was verified. One local model execution test was explicitly skipped because the current Apple Silicon ARM64 emulator reports incompatible SVE/SME capabilities. Live media, physical BLE, real camera detection and forward following remain unverified on hardware. The 20-turn and 30-minute acceptance runs are pending. See [acceptance record](docs/acceptance.md) and [architecture](docs/architecture.md).
 
 ### Build and configuration
 
