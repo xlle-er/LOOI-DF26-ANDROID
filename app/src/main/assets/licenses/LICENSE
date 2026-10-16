@@ -1,0 +1,42 @@
+MIT License
+
+Copyright (c) 2026 xlle-er and contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Scope / 适用范围
+
+This grant covers newly authored Android Kotlin code and tests under app/src,
+project build scripts, tests, and documentation. It does not relicense imported
+code, artwork, model binaries, dependency code or derivatives of those materials.
+
+Excluded from this grant: FaceSource/ and ReferenceSource/ (except the newly
+written FaceSource/android-host.css); app/src/main/assets/face/ and generated
+live-setup.json, scenarios.json, personality.json, idle-scenarios.json;
+icon.png and generated launcher artwork; efficientdet_lite0.tflite;
+gradle/wrapper/gradle-wrapper.jar and upstream gradlew.
+
+Imported eye/web material has no declared upstream license in the source
+snapshot. No additional permission over that material is asserted here.
+Third-party libraries, models and tools retain their own licenses. See NOTICE.md
+and licenses/. No trademark license is granted.
+
+本 MIT 授权仅覆盖新增 Android 原生代码、测试、构建脚本和文档；上述导入代码、
+生成资源、图标、模型与第三方依赖除外。原始眼睛/网页快照未声明上游许可证，
+本次不替其授予额外权利；完整资源包不应被视作全部 MIT 授权。详见 NOTICE.md。

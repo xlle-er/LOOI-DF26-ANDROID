@@ -1,0 +1,1 @@
+<resources><string name="app_name">LOOI Companion</string><style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar"><item name="android:fontFamily">sans</item><item name="android:windowLightStatusBar">false</item><item name="android:colorAccent">#58CFB0</item><item name="android:windowActionModeOverlay">true</item></style></resources>

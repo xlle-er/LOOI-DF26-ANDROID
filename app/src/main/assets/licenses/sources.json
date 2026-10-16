@@ -1,0 +1,15 @@
+{
+  "Apache-2.0.txt": "https://www.apache.org/licenses/LICENSE-2.0.txt",
+  "esbuild-MIT.txt": "https://raw.githubusercontent.com/evanw/esbuild/v0.25.1/LICENSE.md",
+  "MediaPipe-LICENSE.txt": "https://raw.githubusercontent.com/google-ai-edge/mediapipe/master/LICENSE",
+  "OkHttp-LICENSE.txt": "https://raw.githubusercontent.com/square/okhttp/parent-4.12.0/LICENSE.txt",
+  "Okio-LICENSE.txt": "https://raw.githubusercontent.com/square/okio/parent-3.6.0/LICENSE.txt",
+  "XNNPACK-LICENSE.txt": "https://raw.githubusercontent.com/google/XNNPACK/master/LICENSE",
+  "cpuinfo-LICENSE.txt": "https://raw.githubusercontent.com/pytorch/cpuinfo/main/LICENSE",
+  "pthreadpool-LICENSE.txt": "https://raw.githubusercontent.com/google/pthreadpool/master/LICENSE",
+  "libyuv-LICENSE.txt": "https://raw.githubusercontent.com/lemenkov/libyuv/master/LICENSE",
+  "protobuf-LICENSE.txt": "https://raw.githubusercontent.com/protocolbuffers/protobuf/main/LICENSE",
+  "TensorFlow-LICENSE.txt": "https://raw.githubusercontent.com/tensorflow/tensorflow/v2.17.0/LICENSE",
+  "Kotlin-LICENSE.txt": "https://raw.githubusercontent.com/JetBrains/kotlin/v2.1.20/license/LICENSE.txt",
+  "kotlinx-coroutines-LICENSE.txt": "https://raw.githubusercontent.com/Kotlin/kotlinx.coroutines/1.10.2/LICENSE.txt"
+}

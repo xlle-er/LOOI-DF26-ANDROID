@@ -1,0 +1,8 @@
+/* Android WebView's percentage-height + size containment can resolve body to 0.
+   Keep the original eye artwork unchanged and size only its local host. */
+html, body { height: 100vh; min-height: 100vh; }
+body { position: fixed; inset: 0; }
+#faceCanvas { width: 100vw; height: 100vh; min-height: 100vh; }
+@supports (height: 100dvh) {
+  html, body, #faceCanvas { height: 100dvh; min-height: 100dvh; }
+}

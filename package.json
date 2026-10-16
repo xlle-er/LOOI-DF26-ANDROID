@@ -1,0 +1,1 @@
+{"name":"looi-df26-android-resources","private":true,"type":"module","scripts":{"build:resources":"node scripts/build-resources.mjs","test:face":"playwright test"},"devDependencies":{"esbuild":"0.28.2","@playwright/test":"1.55.1"}}
