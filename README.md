@@ -11,7 +11,7 @@ Kotlin + Jetpack Compose 原生应用。本地 WebView 保留原始眼睛及动�
 
 ### 下载与使用
 
-在 [Releases](https://github.com/xlle-er/LOOI-DF26-ANDROID/releases) 下载 `LOOI-Android-0.2.2-debug.apk`，在 Android 7.0（API 24）或更新设备上安装。允许当前下载来源安装应用；校验下载附件的 `SHA256SUMS.txt`。这是**调试签名的实验预览版**，没有商店发布，也未完成机器人真机验收。
+在 [Releases](https://github.com/xlle-er/LOOI-DF26-ANDROID/releases) 下载 `LOOI-Android-0.2.3-debug.apk`，在 Android 7.0（API 24）或更新设备上安装。允许当前下载来源安装应用；校验下载附件的 `SHA256SUMS.txt`。这是**调试签名的实验预览版**，没有商店发布，也未完成机器人真机验收。
 
 1. 默认离线陪伴，无需 API 密钥或机器人即可查看眼睛。在线 AI 使用自己的服务凭据。
 2. 设置中选择跟随系统、简体中文或 English。**AI 回复优先遵循当前语音或文字的语言，界面语言仅作回退。**
