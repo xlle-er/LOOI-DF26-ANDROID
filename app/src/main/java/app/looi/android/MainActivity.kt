@@ -224,10 +224,12 @@ class MainActivity: ComponentActivity() {
 @Composable private fun Field(label: String,value: String,onChange: (String)->Unit) { OutlinedTextField(value,onChange,label={Text(label)},modifier=Modifier.fillMaxWidth(),singleLine=true) }
 @Composable private fun RobotDialog(r: LooiRuntime,s: AppState,scan: ()->Unit,dismiss: ()->Unit) {
     val rows by r.robot.robots.collectAsState(); val scanning by r.robot.scanning.collectAsState(); val status by r.robot.status.collectAsState(); val ready by r.robot.ready.collectAsState()
+    var managing by remember { mutableStateOf(false) }
+    if(managing) DeviceManagementDialog(r) { managing=false }
     var edited by remember { mutableStateOf<RobotRow?>(null) }; var alias by remember { mutableStateOf("") }
     AlertDialog(onDismissRequest=dismiss,title={Text(t("我的机器人","My robots"))},text={
         Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
-            Text(t("明确选择一台机器人。连接成功后会轻微点头识别。","Choose a robot explicitly. It will nod gently after connecting."))
+            Text(t("明确选择一台机器人。连接成功后请核对设备信息。","Choose a robot explicitly. Check the device information after connecting."))
             Text(when(status) {"connecting" -> t("正在连接","Connecting"); "ready" -> t("已就绪","Ready"); else -> t("未连接","Disconnected") })
             if(scanning) LinearProgressIndicator(Modifier.fillMaxWidth())
             rows.forEach { row ->
@@ -241,6 +243,7 @@ class MainActivity: ComponentActivity() {
                     TextButton(onClick={edited=row;alias=row.alias}) {Text(t("别名","Alias"))}
                 }
             }
+            TextButton(onClick={ managing=true }) { Text(t("Wi-Fi / 配网 / 校准 / 升级", "Wi-Fi / Setup / Calibration / Update")) }
             if(rows.isEmpty()) Text(t("尚未发现设备","No devices found yet"))
             FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick=scan,enabled=!scanning) {Text(t("扫描 15 秒","Scan for 15s"))}

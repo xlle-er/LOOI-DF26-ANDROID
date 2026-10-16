@@ -16,7 +16,7 @@ class BodyProtocolTest {
         val p=BodyProtocol.validate(motion().put("duration_ms",50),true)
         assertEquals(.4,p.getDouble("linear"),0.0); assertEquals(-.4,p.getDouble("angular"),0.0); assertEquals(25,p.getInt("ramp_ms"))
     }
-    @Test fun clampsHead() { val p=BodyProtocol.validate(JSONObject().put("type","head_pitch").put("pulse",999).put("duration_ms",9999),true); assertEquals(620,p.getInt("pulse")); assertEquals(2000,p.getInt("duration_ms")) }
+    @Test fun removedActuatorIsRejected() { assertThrows(Exception::class.java) { BodyProtocol.validate(JSONObject().put("type","head_pitch"),true) } }
     @Test(expected=IllegalStateException::class) fun noPermissionNoMotion() { BodyProtocol.validate(motion(),false) }
     @Test(expected=IllegalArgumentException::class) fun numericStringIsNotNumber() { BodyProtocol.validate(motion().put("linear","0.1"),true) }
     @Test(expected=LooiException::class) fun unknownCommandRejected() { BodyProtocol.validate(JSONObject().put("type","raw_pwm"),true) }

@@ -19,6 +19,14 @@ import java.util.concurrent.atomic.AtomicLong
  data class RobotRow(val address: String, val name: String, val rssi: Int, val alias: String = "")
 @SuppressLint("MissingPermission")
 class RobotClient(private val context: Context, private val scope: CoroutineScope, private val report: (String)->Unit): RobotTransport {
+    val wifi = DeviceWifiClient(context, scope)
+    init { wifi.onLost = { ready.value=false; status.value="disconnected"; onDisconnect() } }
+    suspend fun connectWifi(address: String,password: String) {
+        if(ready.value) runCatching { send(JSONObject().put("type","stop")) }
+        disconnect(); stopScan(); wifi.connect(address,password)
+        this.address=wifi.info.value.optString("device_id"); ready.value=true; status.value="ready"
+    }
+    suspend fun manage(payload: JSONObject,password: String): JSONObject = send(JSONObject(payload.toString()).put("admin_password",password))
     private val adapter get() = context.getSystemService(BluetoothManager::class.java)?.adapter
     val robots = MutableStateFlow<List<RobotRow>>(emptyList())
     val status = MutableStateFlow("")
@@ -102,6 +110,7 @@ class RobotClient(private val context: Context, private val scope: CoroutineScop
         }
     }
     suspend fun connect(row: RobotRow) {
+        if(ready.value) runCatching { send(JSONObject().put("type","stop")) }
         disconnect(); stopScan()
         val bt = adapter ?: throw failure()
         connected=CompletableDeferred(); discovered=CompletableDeferred(); subscribed=CompletableDeferred(); mtuReady=CompletableDeferred()
@@ -126,6 +135,7 @@ class RobotClient(private val context: Context, private val scope: CoroutineScop
         } catch(e: Exception) { disconnect(); throw e }
     }
     fun disconnect() {
+        wifi.disconnect()
         epoch.incrementAndGet(); ready.value=false; status.value="disconnected"
         activeCommand?.cancel(); activeCommand=null
         connected.completeExceptionally(failure()); discovered.completeExceptionally(failure()); subscribed.completeExceptionally(failure())
@@ -155,8 +165,10 @@ class RobotClient(private val context: Context, private val scope: CoroutineScop
         val task=scope.async(start=CoroutineStart.LAZY) { sendInternal(payload) }
         pendingStop=task; task.start(); return task
     }
-    override suspend fun send(payload: JSONObject): JSONObject =
-        if(payload.optString("type") == "stop") stopRequest(payload).await() else sendInternal(payload)
+    override suspend fun send(payload: JSONObject): JSONObject {
+        require(payload.optString("type") in BodyProtocol.supportedCommands) { "Unsupported body command" }
+        return if(wifi.connected) wifi.command(payload) else if(payload.optString("type") == "stop") stopRequest(payload).await() else sendInternal(payload)
+    }
     private suspend fun sendInternal(payload: JSONObject): JSONObject {
         val stopping=payload.optString("type") == "stop"
         val token = if(stopping) { epoch.incrementAndGet(); activeCommand?.cancel(); epoch.get() } else epoch.get()

@@ -32,6 +32,7 @@ class SessionGate {
     @Synchronized fun idle() { phase = Phase.IDLE }
 }
 object BodyProtocol {
+    val supportedCommands=setOf("motion","stop","ping","config_get","config_update","device_status","wifi_scan","wifi_configure","wifi_forget","calibration_get","calibration_set","calibration_test","control_acquire","control_renew","control_release","ota_start","ota_exit","ota_status","firmware_check","firmware_install")
     const val SERVICE = "7f2c2b6a-2d8f-4f6b-9a59-8a7f9d7c0001"
     const val WRITE = "7f2c2b6a-2d8f-4f6b-9a59-8a7f9d7c0002"
     const val EVENTS = "7f2c2b6a-2d8f-4f6b-9a59-8a7f9d7c0003"
@@ -48,11 +49,6 @@ object BodyProtocol {
                 p.put("linear", number("linear", -.4, .4)).put("angular", number("angular", -.4, .4))
                 val duration = number("duration_ms", 50.0, 1000.0, 300.0).toInt()
                 p.put("duration_ms", duration).put("ramp_ms", number("ramp_ms", 0.0, min(500, duration/2).toDouble(), 120.0).toInt())
-            }
-            "head_pitch" -> {
-                check(allowed) { t("身体动作未开启", "Body motion is disabled") }
-                p.put("pulse", number("pulse", 500.0, 620.0, 570.0).toInt())
-                p.put("duration_ms", number("duration_ms", 0.0, 2000.0, 350.0).toInt())
             }
             "stop", "ping", "config_get" -> Unit
             else -> throw LooiException("不支持的身体指令", "Unsupported body command")

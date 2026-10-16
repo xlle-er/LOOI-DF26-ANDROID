@@ -11,7 +11,7 @@ Kotlin + Jetpack Compose 原生应用。本地 WebView 保留原始眼睛及动�
 
 ### 下载与使用
 
-在 [Releases](https://github.com/xlle-er/LOOI-DF26-ANDROID/releases) 下载 `LOOI-Android-0.1.0-debug.apk`，在 Android 7.0（API 24）或更新设备上安装。允许当前下载来源安装应用；校验下载附件的 `SHA256SUMS.txt`。这是**调试签名的实验预览版**，没有商店发布，也未完成机器人真机验收。
+在 [Releases](https://github.com/xlle-er/LOOI-DF26-ANDROID/releases) 下载 `LOOI-Android-0.2.0-debug.apk`，在 Android 7.0（API 24）或更新设备上安装。允许当前下载来源安装应用；校验下载附件的 `SHA256SUMS.txt`。这是**调试签名的实验预览版**，没有商店发布，也未完成机器人真机验收。
 
 1. 默认离线陪伴，无需 API 密钥或机器人即可查看眼睛。在线 AI 使用自己的服务凭据。
 2. 设置中选择跟随系统、简体中文或 English。**AI 回复优先遵循当前语音或文字的语言，界面语言仅作回退。**
@@ -32,7 +32,7 @@ Kotlin + Jetpack Compose 原生应用。本地 WebView 保留原始眼睛及动�
 
 | 项目 | 当前记录 |
 | --- | --- |
-| 逻辑测试 | 55 项通过 |
+| 逻辑测试 | 58 项通过（0.2.0） |
 | 眼睛 / WebView 资源回归 | 5 项通过 |
 | Android 模拟器界面冒烟 | 1 项通过，含双语、Activity 重建和实际眼睛像素 |
 | 本地模型执行 | 1 项明确跳过；当前 Apple Silicon ARM64 模拟器存在 SVE/SME 兼容问题 |
@@ -89,7 +89,7 @@ A native Kotlin + Jetpack Compose companion app. A restricted local WebView rend
 
 ### Download and first use
 
-Download `LOOI-Android-0.1.0-debug.apk` from [Releases](https://github.com/xlle-er/LOOI-DF26-ANDROID/releases). Requires Android 7.0 / API 24 or later. Allow installation from your download source and verify `SHA256SUMS.txt`. This is a **debug-signed experimental preview**, with physical robot acceptance still pending.
+Download `LOOI-Android-0.2.0-debug.apk` from [Releases](https://github.com/xlle-er/LOOI-DF26-ANDROID/releases). Requires Android 7.0 / API 24 or later. Allow installation from your download source and verify `SHA256SUMS.txt`. This is a **debug-signed experimental preview**, with physical robot acceptance still pending.
 
 1. Offline companionship works without credentials or a robot. Online AI uses your own provider credentials.
 2. Choose system language, Simplified Chinese or English. **AI prioritizes the language of your current spoken or written message**, with UI language as fallback.
@@ -107,7 +107,7 @@ Bundled EfficientDet-Lite0 int8 runs on CPU at up to 10 Hz without network infer
 
 ### Verification status
 
-55 logic tests and 5 face regression tests passed. One API 35 emulator UI smoke test passed, covering both languages, Activity recreation and visible eye pixels. Lint reported zero errors; the debug APK signature was verified. One local model execution test was explicitly skipped because the current Apple Silicon ARM64 emulator reports incompatible SVE/SME capabilities. Live media, physical BLE, real camera detection and forward following remain unverified on hardware. The 20-turn and 30-minute acceptance runs are pending. See [acceptance record](docs/acceptance.md) and [architecture](docs/architecture.md).
+58 logic tests passed for 0.2.0; 5 face regression tests passed in the earlier acceptance run. One API 35 emulator UI smoke test passed, covering both languages, Activity recreation and visible eye pixels. Lint reported zero errors; the debug APK signature was verified. One local model execution test was explicitly skipped because the current Apple Silicon ARM64 emulator reports incompatible SVE/SME capabilities. Live media, physical BLE, real camera detection and forward following remain unverified on hardware. The 20-turn and 30-minute acceptance runs are pending. See [acceptance record](docs/acceptance.md) and [architecture](docs/architecture.md).
 
 ### Build and configuration
 
@@ -132,3 +132,11 @@ Credentials are encrypted on device using Keystore AES-GCM; ordinary settings us
 **New Android native code, tests, build scripts and documentation are MIT licensed**, subject to the scope and exceptions in [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md). Imported eyes, web reference code, generated derivatives and the icon originate from [LOOI_DF26](https://github.com/xlle-er/LOOI_DF26) / its iOS project, whose upstream has not declared a license. This repository does not grant third-party rights over them; **the complete asset bundle must not be treated as MIT**. Trademarks and artwork retain their owners' rights. Models and dependencies keep their own terms; see [licenses](licenses).
 
 Remove secrets, full device identifiers, private images and conversations before filing an issue. Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+
+## DF26 设备管理 / Device management
+
+“我的机器人”中的设备管理可通过 BLE 配网或 Wi-Fi 连接设备，支持局域网发现、方向校准、300 毫秒点动、停止和本地/在线 OTA。设置保存在 ESP；连接后不再自动点头。首次安装、分区和管理密码见 [Firmware 仓库](https://github.com/xlle-er/LOOI-DF26-Firmware)。
+
+Device management in My robots provides BLE provisioning, LAN discovery/Wi-Fi connection, motor calibration, 300 ms tests, stop, and local/online OTA. Settings are persisted on the ESP. Connection no longer triggers an identification nod. See the Firmware repository for installation, partitions and the management password.
+
+HTTP device connections accept only private IPv4 addresses. DHCP addresses are validated at runtime rather than enumerated in the Android network security XML. Online release downloads require trusted HTTPS.

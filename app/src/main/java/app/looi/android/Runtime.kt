@@ -59,6 +59,7 @@ class LooiRuntime(private val context: Context) {
     private var testOnly=false
     init {
         scope.launch {
+            settings.migrateStoredScenes()
             L10n.language=settings.language()
             val config=settings.load(settings.selected())
             val front=settings.option("frontCamera",true); if(camera.front != front) camera.flip()
@@ -279,13 +280,9 @@ class LooiRuntime(private val context: Context) {
     fun connect(row: RobotRow) { work=scope.launch {
         try {
             robot.connect(row); settings.last(row.address); state.update { it.copy(lastRobot=row.address) }
-            // Explicit connection identification permits only a bounded head nod, never wheel motion.
-            val lease=run { motion.arm(true); motion.acquire(MotionSource.TEST) }
-            motion.send(JSONObject().put("type","head_pitch").put("pulse",550).put("duration_ms",250),MotionSource.TEST,lease)
-            delay(280); motion.send(JSONObject().put("type","head_pitch").put("pulse",570).put("duration_ms",250),MotionSource.TEST,lease)
-            motion.release(MotionSource.TEST,lease); motion.revoke()
+            motion.revoke()
         } catch(e: CancellationException) { robot.disconnect() }
-        catch(_: Exception) { robot.disconnect(); report(t("机器人连接或点头识别失败", "Robot connection or identification nod failed")) }
+        catch(_: Exception) { robot.disconnect(); report(t("机器人连接失败", "Robot connection failed")) }
     } }
     fun cancelConnect() { work?.cancel(); robot.disconnect() }
     fun alias(row: RobotRow, value: String) { scope.launch { settings.alias(row.address,value); robot.robots.update { rows -> rows.map { if(it.address == row.address) it.copy(alias=value) else it } } } }
@@ -351,18 +348,7 @@ class LooiRuntime(private val context: Context) {
                 if(!gate.current(token) || follow.enabled || actionJob?.isActive == true || state.value.busy || audio.status.value.playing || SystemClock.elapsedRealtime()-lastActivity < 15000) continue
                 runCatching {
                     runScenario("pose_curious",MotionSource.IDLE,internal=true)
-                    if(motion.allowed && robot.ready.value && motion.owner == null) {
-                        val lease=motion.acquire(MotionSource.IDLE)
-                        try {
-                            val all=JSONArray(context.assets.open("idle-scenarios.json").bufferedReader().use { it.readText() })
-                            val head=(0 until all.length()).map { all.getJSONObject(it) }.first { it.optString("id") == "idle_custom_15" }.getJSONArray("steps")
-                            for(i in 0 until head.length()) {
-                                val step=head.getJSONObject(i)
-                                motion.send(JSONObject().put("type","head_pitch").put("pulse",step.getInt("pulse")).put("duration_ms",step.getInt("durationMs")),MotionSource.IDLE,lease)
-                                delay(step.getLong("durationMs")+step.optLong("pauseMs"))
-                            }
-                        } finally { motion.release(MotionSource.IDLE,lease) }
-                    }
+
                 }
             }
         }

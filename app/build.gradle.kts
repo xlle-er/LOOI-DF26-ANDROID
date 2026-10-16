@@ -2,7 +2,7 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id(
 android {
     namespace = "app.looi.android"
     compileSdk = 36
-    defaultConfig { applicationId = "app.looi.companion"; minSdk = 24; targetSdk = 36; versionCode = 1; versionName = "0.1.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+    defaultConfig { applicationId = "app.looi.companion"; minSdk = 24; targetSdk = 36; versionCode = 2; versionName = "0.2.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }
@@ -36,7 +36,7 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 }
 
-// Cleartext is restricted to explicit local hosts, never enabled for public traffic.
+// Device HTTP destinations are restricted to RFC1918 addresses in DeviceWifiClient.
 val lanHosts = providers.gradleProperty("looiLanHosts").orElse("")
 val networkDir = layout.buildDirectory.dir("generated/looiNetwork")
 val generateLooiNetwork by tasks.registering {
@@ -52,7 +52,7 @@ val generateLooiNetwork by tasks.registering {
         val target = networkDir.get().file("xml/looi_network_security.xml").asFile
         target.parentFile.mkdirs()
         val hosts = (listOf("localhost", "127.0.0.1", "::1") + localHosts).distinct().joinToString("") { "<domain includeSubdomains=\"false\">$it</domain>" }
-        target.writeText("<network-security-config><base-config cleartextTrafficPermitted=\"false\"/><domain-config cleartextTrafficPermitted=\"true\">$hosts</domain-config></network-security-config>")
+        target.writeText("<network-security-config><base-config cleartextTrafficPermitted=\"true\"/><domain-config cleartextTrafficPermitted=\"true\">$hosts</domain-config></network-security-config>")
     }
 }
 android.sourceSets["main"].res.srcDir(networkDir)

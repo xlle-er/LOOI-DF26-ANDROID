@@ -36,6 +36,23 @@ data class ProviderConfig(
     }
 }
 class SettingsStore(private val context: Context) {
+    suspend fun migrateStoredScenes() { context.dataStore.edit { prefs ->
+        prefs.asMap().toMap().forEach { (key,value) ->
+            if(key.name.contains("scenario",true) && value is String) runCatching {
+                val scenes=org.json.JSONArray(value)
+                if(scenes.length()>0 && (0 until scenes.length()).all { scenes.optJSONObject(it)?.optJSONArray("steps")!=null }) {
+                    val cleaned=org.json.JSONArray()
+                    for(i in 0 until scenes.length()) {
+                        val scene=scenes.getJSONObject(i);val steps=scene.getJSONArray("steps");val kept=org.json.JSONArray();var meaningful=false
+                        for(j in 0 until steps.length()) { val step=steps.getJSONObject(j);val kind=step.optString("kind");if(kind in setOf("move","stop","pause","face","expression")) { kept.put(step);if(kind in setOf("move","face","expression"))meaningful=true } }
+                        if(meaningful) { scene.put("steps",kept);scene.remove("usesHead");cleaned.put(scene) }
+                    }
+                    prefs[stringPreferencesKey(key.name)]=cleaned.toString()
+                }
+            }
+        }
+    } }
+
     private val selection = stringPreferencesKey("provider")
     suspend fun selected() = context.dataStore.data.first()[selection] ?: "offline"
     suspend fun load(provider: String): ProviderConfig {
