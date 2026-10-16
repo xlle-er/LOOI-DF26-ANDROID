@@ -44,6 +44,7 @@ class RemoteViewTest {
             compose.waitUntil(5000) {commands.any {it.getDouble("linear")>0 && it.getDouble("angular")>0}}
             joystick.performTouchInput { cancel() }
             compose.waitUntil(5000) {remote.ready && !remote.state.value.moving}
+            compose.waitForIdle()
             val image=androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
             val path=java.io.File(androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().targetContext.cacheDir,"remote-emulator.png")
             path.outputStream().use {image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)};image.recycle()
