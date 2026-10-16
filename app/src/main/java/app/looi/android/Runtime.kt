@@ -43,6 +43,22 @@ class LooiRuntime(private val context: Context) {
     val face=FaceHost(context,scope,::report)
     val live=LiveClient(context,scope,audio,::report)
     val follow=FollowPolicy()
+    val remote=RemoteControl(scope,{robot.ready.value},send={ command ->
+        check(remoteReady())
+        motion.arm(true)
+        val lease=motion.acquire(MotionSource.REMOTE)
+        motion.send(command,MotionSource.REMOTE,lease)
+    },stop={
+        // Drain the old follow/scenario cleanup before admitting manual input.
+        followJob?.cancelAndJoin(); stopFollowLocal()
+        scenarioLock.withLock {
+            motion.revoke(); state.update { it.copy(motion=false) }; face.publish(faceState())
+            if(!robot.ready.value) false else runCatching { motion.stop(true); true }.getOrDefault(false)
+        }
+    },takeover={ cancelAction(); followJob?.cancel(); motion.revoke(); state.update { it.copy(motion=false) } },
+      fault={motion.revoke(); state.update {it.copy(motion=false)}; report(t("遥控停止或指令未获确认，请检查机器人","Remote stop or command unconfirmed; check the robot"))})
+    private fun remoteReady(): Boolean = remote.ready
+    fun openRemote() { if(gate.phase in setOf(Phase.IDLE,Phase.ACTIVE)) remote.open() }
     private val http=OkHttpClient.Builder().callTimeout(30,TimeUnit.SECONDS).build()
     private val scenarios: Set<String> = JSONArray(context.assets.open("scenarios.json").bufferedReader().use { it.readText() }).let { a -> (0 until a.length()).map { a.getString(it) }.toSet() }
     private var work: Job? = null
@@ -66,7 +82,7 @@ class LooiRuntime(private val context: Context) {
             val cameraWanted=settings.option("cameraWanted",true)
             state.update { it.copy(config=config,language=L10n.language,loaded=true,frontCamera=front,cameraWanted=cameraWanted,myRobot=settings.own(),lastRobot=settings.last(),liveMode=config.provider in listOf("gemini","vertex")) }
         }
-        robot.onDisconnect={ motion.revoke(); stopFollowLocal(); state.update { it.copy(motion=false) }; face.publish(faceState()) }
+        robot.onDisconnect={ remote.connectionLost(); motion.revoke(); stopFollowLocal(); state.update { it.copy(motion=false) }; face.publish(faceState()) }
         camera.onDetectorUnavailable={ state.update {it.copy(detecting=false)} }
         camera.onInvalidated={ invalidateFollow() }
         camera.onFrame={ if(state.value.phase == Phase.ACTIVE && state.value.liveMode) live.frame(it) }
@@ -78,6 +94,7 @@ class LooiRuntime(private val context: Context) {
         }
         face.photo={ camera.snapshot() }
         face.command={ command ->
+            check(!remote.busy) { t("手动遥控中，AI 身体动作已暂停","Manual remote active; AI body actions are paused") }
             if(command.optString("type") == "stop") { check(robot.ready.value) { t("停止未获确认：机器人未连接", "Stop unconfirmed: robot disconnected") }; motion.stop(); JSONObject().put("type","ack") }
             else {
                 check(gate.phase == Phase.ACTIVE || activeSource == MotionSource.TEST)
@@ -86,11 +103,11 @@ class LooiRuntime(private val context: Context) {
             }
         }
         live.onScenario={ runScenario(it,MotionSource.SCENARIO) }
-        live.onCancel={ cancelAction(); scope.launch { stopMotion() } }
+        live.onCancel={ if(!remote.busy) { cancelAction(); scope.launch { stopMotion() } } }
         live.onStop={ scope.launch { stopMotion() } }
         live.onFailure={
             if(gate.phase == Phase.ACTIVE || gate.phase == Phase.STARTING) {
-                scope.launch { audio.stop(); invalidateFollow(); runCatching { motion.stop(true) }; state.update { it.copy(motion=false) } }
+                scope.launch { audio.stop(); if(!remote.busy) { invalidateFollow(); runCatching { motion.stop(true) }; state.update { it.copy(motion=false) } } }
             }
         }
         scope.launch {
@@ -134,6 +151,7 @@ class LooiRuntime(private val context: Context) {
     fun deleteCredential() { scope.launch { withContext(Dispatchers.IO) { credentials.remove(state.value.config.provider); if(state.value.config.provider == "vertex") credentials.remove("google.account") }; report(t("凭据已删除", "Credential deleted")) } }
     fun setLive(value: Boolean) { if(gate.phase == Phase.IDLE) state.update { it.copy(liveMode=value) } }
     fun prepareStart(test: Boolean=false): Long? {
+        if(remote.busy) return null
         val token=gate.begin(test) ?: return null
         testOnly=test; permissionsToken=token
         state.update { it.copy(phase=gate.phase,message="",reply="") }; return token
@@ -184,6 +202,7 @@ class LooiRuntime(private val context: Context) {
     fun cancel() { scope.launch { stop() } }
     suspend fun stop(preserveMessage: Boolean=false) {
         if(gate.phase == Phase.STOPPING) return
+        remote.close()
         gate.stop(); permissionsToken=null
         val self=currentCoroutineContext()[Job]
         if(work !== self) work?.cancel(); work=null
@@ -193,6 +212,7 @@ class LooiRuntime(private val context: Context) {
         gate.idle(); state.update { it.copy(phase=Phase.IDLE,motion=false,following=false,busy=false,selected=null,followReference=false,message=if(stopped.isFailure) t("停止未获确认，请检查机器人", "Stop was not confirmed; check the robot") else if(preserveMessage) it.message else "") }
     }
     fun background() {
+        remote.close()
         scope.launch { if(gate.phase != Phase.IDLE) stop(); else { runCatching { motion.stop(true) }; camera.stop(); audio.stop() }; robot.stopScan(); robot.disconnect() }
     }
     fun cameraWanted(value: Boolean) {
@@ -212,11 +232,13 @@ class LooiRuntime(private val context: Context) {
         if(!ok) report(t("目标不稳定，请重新选择", "Target is not stable; select it again"))
     }
     fun arm(value: Boolean) {
+        if(remote.busy) return
         if(value && !robot.ready.value) { report(t("请先连接机器人", "Connect a robot first")); return }
         motion.arm(value); state.update { it.copy(motion=value) }; face.publish(faceState())
         if(!value) scope.launch { stopMotion() }
     }
     fun startFollow() {
+        if(remote.busy) return
         if(!motion.allowed || !robot.ready.value || !camera.running.value || !camera.detectEnabled || !follow.start(SystemClock.elapsedRealtime())) {
             report(t("需要相机、目标参考和本次运动许可", "Camera, target reference and motion permission are required")); return
         }
@@ -248,6 +270,7 @@ class LooiRuntime(private val context: Context) {
         if(moving) scope.launch { runCatching { motion.stop() }.onFailure { report(t("停止未获确认", "Stop was not confirmed")) } }
     }
     suspend fun stopMotion() {
+        if(remote.state.value.presented) { remote.emergencyStop(); return }
         cancelAction(); stopFollowLocal(); motion.arm(false); state.update { it.copy(motion=false) }; face.publish(faceState())
         runCatching { motion.stop(true) }.onFailure { report(t("停止未获确认", "Stop was not confirmed")) }
     }
@@ -255,6 +278,7 @@ class LooiRuntime(private val context: Context) {
     private suspend fun runScenario(name: String, source: MotionSource, internal: Boolean=false) {
         val requestedEpoch=actionEpoch
         scenarioLock.withLock {
+        check(!remote.busy) { t("手动遥控中，AI 身体动作已暂停","Manual remote active; AI body actions are paused") }
         check(requestedEpoch == actionEpoch) { t("动作已取消", "Action cancelled") }
         check(name in scenarios || internal && name in setOf("pose_neutral","pose_attentive","pose_curious","pose_happy","pose_sleepy","pose_scared","pose_shy","wake_activation")) { t("未知动作", "Unknown action") }
         check(!testOnly || source == MotionSource.TEST)
@@ -268,6 +292,7 @@ class LooiRuntime(private val context: Context) {
     }
     }
     fun actionTest(name: String="ack_yes") {
+        if(remote.busy) return
         if(!robot.ready.value) { report(t("请先连接机器人", "Connect a robot first")); return }
         val testToken=gate.begin(true) ?: return
         state.update { it.copy(phase=Phase.TESTING) }; cancelAction()
@@ -345,7 +370,7 @@ class LooiRuntime(private val context: Context) {
         idleJob=scope.launch {
             while(gate.current(token)) {
                 delay(18000)
-                if(!gate.current(token) || follow.enabled || actionJob?.isActive == true || state.value.busy || audio.status.value.playing || SystemClock.elapsedRealtime()-lastActivity < 15000) continue
+                if(!gate.current(token) || remote.busy || follow.enabled || actionJob?.isActive == true || state.value.busy || audio.status.value.playing || SystemClock.elapsedRealtime()-lastActivity < 15000) continue
                 runCatching {
                     runScenario("pose_curious",MotionSource.IDLE,internal=true)
 

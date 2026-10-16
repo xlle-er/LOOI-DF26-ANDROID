@@ -191,7 +191,7 @@ class RobotClient(private val context: Context, private val scope: CoroutineScop
         } } finally { count.decrementAndGet() }
     }
 }
-enum class MotionSource(val priority: Int) { IDLE(0), FOLLOW(1), SCENARIO(2), TEST(3) }
+enum class MotionSource(val priority: Int) { IDLE(0), FOLLOW(1), SCENARIO(2), TEST(3), REMOTE(4) }
 interface RobotTransport { val ready: MutableStateFlow<Boolean>; suspend fun send(payload: JSONObject): JSONObject }
 class MotionArbiter(private val robot: RobotTransport) {
     var allowed = false; private set

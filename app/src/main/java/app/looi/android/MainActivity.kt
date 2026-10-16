@@ -81,6 +81,8 @@ class MainActivity: ComponentActivity() {
 }
 @Composable private fun LooiApp(r: LooiRuntime, activity: MainActivity) {
     val s by r.state.collectAsState()
+    val remote by r.remote.state.collectAsState()
+    val robotReady by r.robot.ready.collectAsState()
     var permissionToken by rememberSaveable { mutableStateOf<Long?>(null) }
     var permissionPurpose by rememberSaveable { mutableStateOf("") }
     var showRobots by remember { mutableStateOf(false) }
@@ -105,11 +107,11 @@ class MainActivity: ComponentActivity() {
     val config=LocalConfiguration.current
     val companion=s.phase == Phase.ACTIVE
     val landscape=companion || s.phase == Phase.STARTING
-    LaunchedEffect(companion,landscape,config.screenWidthDp) {
+    LaunchedEffect(companion,landscape,config.screenWidthDp,remote.presented) {
         activity.requestedOrientation=if(config.smallestScreenWidthDp >= 600 || activity.isInMultiWindowMode) ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED else if(landscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-        if(companion) activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        if(companion || remote.presented) activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) else activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
-    BackHandler(s.phase != Phase.IDLE) { r.cancel() }
+    BackHandler(s.phase != Phase.IDLE || remote.presented) { if(remote.presented) r.remote.close() else r.cancel() }
     key(s.language) {
     Surface(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize()) {
@@ -128,13 +130,15 @@ class MainActivity: ComponentActivity() {
             }
         }
     }
+    if(remote.presented) RemoteDialog(r.remote,robotReady)
     if(showConfig) ConfigDialog(r,s,{activity.authorizeGoogle()}) { showConfig=false }
     if(showRobots) RobotDialog(r,s,::scan) { r.robot.stopScan(); showRobots=false }
 }
 }
 @Composable private fun SettingsScreen(r: LooiRuntime,s: AppState,robots: ()->Unit,configure: ()->Unit,start: ()->Unit,test: ()->Unit) {
     val ready by r.robot.ready.collectAsState()
-    val idle=s.phase == Phase.IDLE
+    val remote by r.remote.state.collectAsState()
+    val idle=s.phase == Phase.IDLE && !remote.presented && remote.phase != RemotePhase.STOPPING
     Box(Modifier.fillMaxSize().safeDrawingPadding()) {
         Column(Modifier.fillMaxWidth().widthIn(max=720.dp).align(Alignment.TopCenter).padding(bottom=104.dp).verticalScroll(rememberScrollState()).padding(24.dp),verticalArrangement=Arrangement.spacedBy(16.dp)) {
             Text("LOOI",style=MaterialTheme.typography.displaySmall,fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
@@ -146,6 +150,7 @@ class MainActivity: ComponentActivity() {
                     OutlinedButton(onClick=configure,enabled=idle,modifier=Modifier.weight(1f)) { Text(t("AI 服务","AI services")) }
                 }
                 Text((if(ready) t("机器人已连接","Robot connected") else t("不连接机器人也能陪伴","Companionship works without a robot"))+" · "+s.config.provider,style=MaterialTheme.typography.bodyMedium)
+                OutlinedButton(onClick=r::openRemote,enabled=idle && ready) {Text(t("遥控器","Remote control"))}
                 Toggle(t("实时语音","Live voice"),s.liveMode,idle && s.config.provider in listOf("gemini","vertex"),r::setLive)
                 Toggle(t("开启相机","Camera"),s.cameraWanted,idle,r::cameraWanted)
                 OutlinedButton(onClick=r::flipCamera,enabled=idle) {Text(if(s.frontCamera) t("当前前置镜头 · 切换","Front lens · switch") else t("当前后置镜头 · 切换","Rear lens · switch"))}
@@ -310,6 +315,7 @@ class MainActivity: ComponentActivity() {
                         TextButton(onClick=r::cancel) {Text(t("退出","Exit"))}
                     }
                     Text(if(liveConnected) t("Live 已连接","Live connected") else if(s.config.provider == "offline") t("离线陪伴","Offline companion") else t("文字模式或连接待恢复","Text mode or connection needs recovery"),style=MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick=r::openRemote,enabled=r.robot.ready.collectAsState().value) {Text(t("遥控器","Remote control"))}
                     Toggle(t("相机","Camera"),s.cameraWanted) { value -> r.cameraWanted(value); if(value && !cameraRunning) requestCamera() }
                     FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick=r::flipCamera,enabled=cameraRunning) {Text(t("切换镜头","Switch lens"))}

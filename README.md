@@ -11,13 +11,19 @@ Kotlin + Jetpack Compose 原生应用。本地 WebView 保留原始眼睛及动�
 
 ### 下载与使用
 
-在 [Releases](https://github.com/xlle-er/LOOI-DF26-ANDROID/releases) 下载 `LOOI-Android-0.2.1-debug.apk`，在 Android 7.0（API 24）或更新设备上安装。允许当前下载来源安装应用；校验下载附件的 `SHA256SUMS.txt`。这是**调试签名的实验预览版**，没有商店发布，也未完成机器人真机验收。
+在 [Releases](https://github.com/xlle-er/LOOI-DF26-ANDROID/releases) 下载 `LOOI-Android-0.2.2-debug.apk`，在 Android 7.0（API 24）或更新设备上安装。允许当前下载来源安装应用；校验下载附件的 `SHA256SUMS.txt`。这是**调试签名的实验预览版**，没有商店发布，也未完成机器人真机验收。
 
 1. 默认离线陪伴，无需 API 密钥或机器人即可查看眼睛。在线 AI 使用自己的服务凭据。
 2. 设置中选择跟随系统、简体中文或 English。**AI 回复优先遵循当前语音或文字的语言，界面语言仅作回退。**
 3. 在“我的机器人”扫描并明确选择设备后连接；运动需要另行开启本次许可。
 4. Gemini / 标准 Vertex 支持 Live 语音与相机；Qwen、Groq、Fireworks、Ollama 和兼容服务使用文字。图片只由用户显式附加。
 5. 按需授权麦克风、相机和附近设备；旧 Android 扫描需前台位置权限。进入后台结束采集并请求身体停止。
+
+### 遥控器
+
+连接机器人后，可从设置页或陪伴控制打开“遥控器”。提供摇杆和方向键，按住移动，松手、滑出控制区、系统取消或关闭时请求停止。速度为 0.05–0.30（默认 0.15，无物理单位承诺），摇杆有 12% 中心死区；每条运动限定 400 ms，收到应用层 ACK 后最多每 100 ms 续发，只保留最新输入。打开、切换模式和重新尝试均先确认停止；未确认或断线时禁止继续操作。
+
+手动遥控暂停 AI 身体动作和视觉跟随，对话可继续；关闭后不自动恢复身体运动许可。方向键支持 TalkBack 点击短脉冲，摇杆提供四方向无障碍动作。进入后台关闭遥控。运动实际速度、方向及停止效果仍待实体机器人验证。
 
 ### 功能与实验边界
 
@@ -89,13 +95,19 @@ A native Kotlin + Jetpack Compose companion app. A restricted local WebView rend
 
 ### Download and first use
 
-Download `LOOI-Android-0.2.1-debug.apk` from [Releases](https://github.com/xlle-er/LOOI-DF26-ANDROID/releases). Requires Android 7.0 / API 24 or later. Allow installation from your download source and verify `SHA256SUMS.txt`. This is a **debug-signed experimental preview**, with physical robot acceptance still pending.
+Download `LOOI-Android-0.2.2-debug.apk` from [Releases](https://github.com/xlle-er/LOOI-DF26-ANDROID/releases). Requires Android 7.0 / API 24 or later. Allow installation from your download source and verify `SHA256SUMS.txt`. This is a **debug-signed experimental preview**, with physical robot acceptance still pending.
 
 1. Offline companionship works without credentials or a robot. Online AI uses your own provider credentials.
 2. Choose system language, Simplified Chinese or English. **AI prioritizes the language of your current spoken or written message**, with UI language as fallback.
 3. Scan and explicitly choose a robot in My robots. Enable session motion permission separately.
 4. Gemini and standard Vertex support Live voice/video; Qwen, Groq, Fireworks, Ollama and compatible endpoints use text. Images are attached only by explicit user action.
 5. Grant microphone, camera and nearby-device permissions when needed. Older Android versions require foreground location for BLE scanning. Backgrounding ends capture and requests a body stop.
+
+### Remote control
+
+After connecting a robot, open Remote control from settings or companion controls. Choose joystick or D-pad; hold to move and release, leave the control bounds, cancel or close to request a stop. Speed ranges from 0.05 to 0.30 (default 0.15, not a physical speed unit); the joystick has a 12% dead zone. Commands have 400 ms firmware leases, renew at most once per 100 ms after an application ACK, and retain only the latest input. Opening, mode changes and retries require a confirmed stop; faults inhibit input.
+
+AI body actions and visual following pause during manual control while conversation can continue. Closing does not restore autonomous motion permission. TalkBack users can tap direction buttons for short pulses or choose directional joystick actions. Backgrounding closes the remote. Physical direction, speed and stopping still require robot validation.
 
 ### Features and experimental following
 
