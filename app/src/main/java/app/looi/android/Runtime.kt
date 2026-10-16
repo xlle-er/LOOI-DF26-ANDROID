@@ -190,7 +190,11 @@ class LooiRuntime(private val context: Context) {
                     report(t("离线模式请使用声音测试", "Use Sound test in offline mode")); stop(true); return@launch
                 }
                 if(!gate.current(token)) return@launch
-                gate.active(token); state.update { it.copy(phase=Phase.ACTIVE) }
+                // Each new companion session starts with body motion enabled.
+                // Stops, disconnects and manual takeover can revoke it for this session.
+                motion.arm(true)
+                gate.active(token); state.update { it.copy(phase=Phase.ACTIVE,motion=true) }
+                face.publish(faceState())
                 if(s.cameraWanted && has(Manifest.permission.CAMERA)) camera.start()
                 else if(s.cameraWanted) report(t("相机未授权，已降级为语音或文字陪伴", "Camera denied; voice or text companionship is available"))
                 startIdle(token)

@@ -15,7 +15,7 @@ Kotlin + Jetpack Compose 原生应用。本地 WebView 保留原始眼睛及动�
 
 1. 默认离线陪伴，无需 API 密钥或机器人即可查看眼睛。在线 AI 使用自己的服务凭据。
 2. 设置中选择跟随系统、简体中文或 English。**AI 回复优先遵循当前语音或文字的语言，界面语言仅作回退。**
-3. 在“我的机器人”扫描并明确选择设备后连接；运动需要另行开启本次许可。
+3. 在“我的机器人”扫描并明确选择设备后连接；每次开始陪伴默认开启身体运动；停止、断连、故障或手动遥控后，可在陪伴页重新开启“允许本次身体运动”。
 4. Gemini / 标准 Vertex 支持 Live 语音与相机；Qwen、Groq、Fireworks、Ollama 和兼容服务使用文字。图片只由用户显式附加。
 5. 按需授权麦克风、相机和附近设备；旧 Android 扫描需前台位置权限。进入后台结束采集并请求身体停止。
 
@@ -30,7 +30,7 @@ Kotlin + Jetpack Compose 原生应用。本地 WebView 保留原始眼睛及动�
 - 原始本地眼睛、离线人格/待机、设置、机器人列表、文字输入、显式图片附件、组件诊断与测试入口。
 - 原生连续音视频、CameraX 共用相机会话、串行 GATT、应用层 ACK、停止优先的运动仲裁。
 - 随包 EfficientDet-Lite0 int8，CPU 本地目标检测，最多 10 Hz，不需 Roboflow。
-- **相对视觉跟随为实验功能**：选择具体目标、稳定后设定当前框面积参考、单独授予运动许可，再开始。偏离中心只转向，框变小时短脉冲前进，达到参考大小时停止，不自动倒车。
+- **相对视觉跟随为实验功能**：选择具体目标、稳定后设定当前框面积参考、确认身体运动开关已开启，再开始。偏离中心只转向，框变小时短脉冲前进，达到参考大小时停止，不自动倒车。
 - 丢失、歧义、检测超过 300 ms、相机切换或 BLE 异常使跟随失效；需要重新选择目标。
 - **不测量厘米距离，不提供避障或防跌落能力。实际速度和停止效果须用实体机器人标定。**
 
@@ -99,7 +99,7 @@ Download `LOOI-Android-0.2.2-debug.apk` from [Releases](https://github.com/xlle-
 
 1. Offline companionship works without credentials or a robot. Online AI uses your own provider credentials.
 2. Choose system language, Simplified Chinese or English. **AI prioritizes the language of your current spoken or written message**, with UI language as fallback.
-3. Scan and explicitly choose a robot in My robots. Enable session motion permission separately.
+3. Scan and explicitly choose a robot in My robots. Body motion is enabled by default for each new companion session. After a stop, disconnect, fault or manual remote use, re-enable it from the companion controls.
 4. Gemini and standard Vertex support Live voice/video; Qwen, Groq, Fireworks, Ollama and compatible endpoints use text. Images are attached only by explicit user action.
 5. Grant microphone, camera and nearby-device permissions when needed. Older Android versions require foreground location for BLE scanning. Backgrounding ends capture and requests a body stop.
 
@@ -113,7 +113,7 @@ AI body actions and visual following pause during manual control while conversat
 
 Includes local eyes, offline personality/idle behavior, settings, robot selection, text/image input and diagnostics. Native media, serialized GATT with application ACKs, and a shared motion arbiter coordinate robot control.
 
-Bundled EfficientDet-Lite0 int8 runs on CPU at up to 10 Hz without network inference. To follow, select a specific target, set its apparent area as reference once stable, explicitly authorize session motion, and start. The robot turns toward an off-center target and uses short forward pulses when its box becomes smaller. It stops near the reference size and never automatically reverses. Stale detections over 300 ms, ambiguity, target loss, lens changes or BLE faults invalidate tracking and require reselection.
+Bundled EfficientDet-Lite0 int8 runs on CPU at up to 10 Hz without network inference. To follow, select a specific target, set its apparent area as reference once stable, confirm session motion is enabled, and start. The robot turns toward an off-center target and uses short forward pulses when its box becomes smaller. It stops near the reference size and never automatically reverses. Stale detections over 300 ms, ambiguity, target loss, lens changes or BLE faults invalidate tracking and require reselection.
 
 **Following estimates relative apparent size only. It does not measure physical distance, avoid obstacles or detect drop-offs. Actual speed and physical stopping require calibration on your robot.**
 
