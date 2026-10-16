@@ -32,7 +32,7 @@ class SessionGate {
     @Synchronized fun idle() { phase = Phase.IDLE }
 }
 object BodyProtocol {
-    val supportedCommands=setOf("motion","stop","ping","config_get","config_update","device_status","wifi_scan","wifi_configure","wifi_forget","calibration_get","calibration_set","calibration_test","control_acquire","control_renew","control_release","ota_start","ota_exit","ota_status","firmware_check","firmware_install")
+    val supportedCommands=setOf("motion","stop","ping","config_get","config_update","device_status","wifi_scan","wifi_configure","wifi_forget","calibration_get","calibration_set","calibration_test","control_acquire","control_renew","control_release","ota_start","ota_exit","ota_status","firmware_check","firmware_install","hardware_get","hardware_set")
     const val SERVICE = "7f2c2b6a-2d8f-4f6b-9a59-8a7f9d7c0001"
     const val WRITE = "7f2c2b6a-2d8f-4f6b-9a59-8a7f9d7c0002"
     const val EVENTS = "7f2c2b6a-2d8f-4f6b-9a59-8a7f9d7c0003"

@@ -15,6 +15,7 @@ import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 class DeviceWifiClient(context: Context, private val scope: CoroutineScope) {
+    private val hardwarePrefs=context.getSharedPreferences("looi-hardware",Context.MODE_PRIVATE)
     private val firmwareCache=FirmwarePackageCache(java.io.File(context.filesDir,"firmware"))
     val prepared=MutableStateFlow(runCatching{firmwareCache.read()?.first}.getOrNull())
     val devices=MutableStateFlow<List<Pair<String,String>>>(emptyList())
@@ -61,7 +62,7 @@ class DeviceWifiClient(context: Context, private val scope: CoroutineScope) {
     fun disconnect(){epoch++;motionEpoch++;controlToken=0;connected=false;heartbeat?.cancel();heartbeat=null}
     suspend fun refresh(): JSONObject {
         val result=request("/api/status")
-        token=result.getString("csrf_token");info.value=result;return result
+        token=result.getString("csrf_token");info.value=result;result.optJSONObject("hardware_profile")?.optString("board")?.takeIf{it in setOf("n16r8","n8r8")}?.let{hardwarePrefs.edit().putString("board",it).apply()};return result
     }
     suspend fun command(payload: JSONObject): JSONObject {
         val type=payload.optString("type")
@@ -77,7 +78,7 @@ class DeviceWifiClient(context: Context, private val scope: CoroutineScope) {
             val result=checkedRequest(JSONObject(payload.toString()).put("control_token",controlToken))
             check(current==motionEpoch){"Command cancelled"}
             if(type=="control_acquire")controlToken=result.getLong("control_token")
-            if(type in setOf("calibration_set","wifi_configure","wifi_forget","ota_start","control_release","firmware_check","firmware_install"))controlToken=0
+            if(type in setOf("calibration_set","wifi_configure","wifi_forget","ota_start","control_release","firmware_check","firmware_install","hardware_set"))controlToken=0
             return result
         } finally { commandLock.unlock() }
     }
@@ -95,6 +96,12 @@ class DeviceWifiClient(context: Context, private val scope: CoroutineScope) {
     suspend fun upload(bytes: ByteArray,name: String,expectedSha: String?=null,closeHotspot: Boolean=true) {
         check(connected) { "Connect to the device over Wi-Fi first" }
         require(bytes.size in 32..3145728 && name.endsWith(".bin") && bytes[0]==0xe9.toByte()){ "Select an ESP32-S3 application .bin" }
+        if(info.value.optInt("hardware_protocol")==1) {
+            val board=info.value.optJSONObject("hardware_profile")?.optString("board").orEmpty()
+            val partition=info.value.optString("partition")
+            val marker="LOOI_HW_V1|$board|1|$partition|END".toByteArray()
+            require((0..bytes.size-marker.size).any { i -> marker.indices.all { j -> bytes[i+j]==marker[j] } }){"Incompatible hardware firmware / 固件与接线配置协议或板型不兼容"}
+        }
         val sha=sha256(bytes);require(expectedSha==null||sha.equals(expectedSha,true)){"Firmware SHA-256 mismatch"}
         heartbeat?.cancel();command(JSONObject().put("type","ota_start").put("close_ap_after_update",closeHotspot))
         val form=MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("firmware",name,bytes.toRequestBody("application/octet-stream".toMediaType())).build()
@@ -102,11 +109,13 @@ class DeviceWifiClient(context: Context, private val scope: CoroutineScope) {
         withContext(Dispatchers.IO){http.newBuilder().callTimeout(180,TimeUnit.SECONDS).readTimeout(180,TimeUnit.SECONDS).build().newCall(req).execute().use{r->val result=JSONObject(r.body?.string().orEmpty());check(r.isSuccessful&&result.optBoolean("accepted")){result.optString("message","Update failed")}}}
         disconnect()
     }
-    suspend fun release(): JSONObject=withContext(Dispatchers.IO) {
-        fetchHttps(MANIFEST,8192).let{JSONObject(it.toString(Charsets.UTF_8))}.also{validateRelease(it)}
+    suspend fun release(includePreview: Boolean=false): JSONObject=withContext(Dispatchers.IO) {
+        val boardUrl=if(hardwarePrefs.getString("board","n16r8")=="n8r8") MANIFEST.replace("looi-s3-manifest","looi-s3-n8r8-manifest") else MANIFEST
+        val url=if(includePreview) boardUrl.replace("/latest/download/","/download/preview/") else boardUrl
+        fetchHttps(url,8192).let{JSONObject(it.toString(Charsets.UTF_8))}.put("channel",if(includePreview) "preview" else "stable").also{validateRelease(it)}
     }
     private fun validateRelease(m: JSONObject) {
-        require(m.getString("chip")=="ESP32-S3" && m.getString("partition")=="app3M_fat9M_16MB" && m.getInt("size") in 32..3145728 && m.getString("sha256").matches(Regex("[0-9a-fA-F]{64}"))){"Incompatible firmware release"}
+        require(m.getString("chip")=="ESP32-S3" && ((m.getString("partition")=="app3M_fat9M_16MB" && m.optString("board","n16r8")=="n16r8") || (m.getString("partition")=="looi_8m" && m.optString("board")=="n8r8")) && m.getInt("size") in 32..3145728 && m.getString("sha256").matches(Regex("[0-9a-fA-F]{64}"))){"Incompatible firmware release"}
         require(m.getString("url").startsWith("https://github.com/xlle-er/LOOI-DF26-Firmware/releases/")){"Untrusted firmware URL"}
     }
     suspend fun prepareRelease(m: JSONObject) {
@@ -114,8 +123,9 @@ class DeviceWifiClient(context: Context, private val scope: CoroutineScope) {
         withContext(Dispatchers.IO){val bytes=fetchHttps(m.getString("url"),3145728);firmwareCache.save(m,bytes)}
         prepared.value=JSONObject(m.toString())
     }
-    suspend fun installPrepared(closeHotspot: Boolean=true) {
+    suspend fun installPrepared(closeHotspot: Boolean=true,includePreview: Boolean=false) {
         val cached=withContext(Dispatchers.IO){firmwareCache.read()}?:error("Download firmware before joining the ESP hotspot")
+        require(FirmwarePackageCache.allowsUpdate(cached.first,includePreview)){"Enable preview updates / 请先开启预览版更新"}
         upload(cached.second,"looi-s3.bin",cached.first.getString("sha256"),closeHotspot)
     }
     private fun fetchHttps(url: String,limit: Int): ByteArray {

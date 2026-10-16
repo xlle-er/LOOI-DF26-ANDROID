@@ -7,8 +7,13 @@ import org.json.JSONObject
 /** A verified package survives network changes and application restarts. */
 class FirmwarePackageCache(private val directory: File) {
     companion object {
+        fun allowsUpdate(m: JSONObject,includePreview: Boolean=false): Boolean {
+            val channel=m.optString("channel","stable")
+            return channel=="stable" || (channel=="preview" && includePreview)
+        }
         fun verify(bytes: ByteArray,m: JSONObject) {
-            require(m.getString("chip")=="ESP32-S3" && m.getString("partition")=="app3M_fat9M_16MB" && m.getInt("size") in 32..3145728){"Incompatible firmware release"}
+            require(m.optString("channel","stable") in setOf("stable","preview")){"Unknown update channel"}
+            require(m.getString("chip")=="ESP32-S3" && ((m.getString("partition")=="app3M_fat9M_16MB" && m.optString("board","n16r8")=="n16r8") || (m.getString("partition")=="looi_8m" && m.optString("board")=="n8r8")) && m.getInt("size") in 32..3145728){"Incompatible firmware release"}
             val sha=m.getString("sha256");require(sha.matches(Regex("[0-9a-fA-F]{64}"))){"Invalid firmware checksum"}
             require(bytes.size==m.getInt("size") && bytes.firstOrNull()==0xe9.toByte()){"Firmware size or image is invalid"}
             val actual=MessageDigest.getInstance("SHA-256").digest(bytes).joinToString(""){"%02x".format(it)}
