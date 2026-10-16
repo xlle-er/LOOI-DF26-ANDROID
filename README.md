@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="icon.png" alt="LOOI icon" width="160" />
+  <img src="docs/icon-rounded.svg" alt="LOOI icon" width="160" height="160" />
 </p>
 <h1 align="center">LOOI-DF26-ANDROID</h1>
 <p align="center">原生 Android 机器人陪伴应用 · Native Android robot companion</p>
