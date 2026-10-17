@@ -151,6 +151,7 @@ class MainActivity: ComponentActivity() {
             Text("LOOI",style=MaterialTheme.typography.displaySmall,fontWeight=FontWeight.Bold,color=MaterialTheme.colorScheme.primary)
             Text(t("陪伴设置","Companion settings"),style=MaterialTheme.typography.headlineMedium)
             Text(t("把手机放在机器人上，让陪伴开始。","Place your phone on your robot and make yourself at home."),color=MaterialTheme.colorScheme.onSurfaceVariant)
+            WiringRequiredCard(r)
             SettingCard(t("连接与对话","Connection & conversation")) {
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick=robots,enabled=idle,modifier=Modifier.weight(1f)) { Text(t("连接机器人","Connect robot")) }
@@ -248,6 +249,7 @@ class MainActivity: ComponentActivity() {
     var edited by remember { mutableStateOf<RobotRow?>(null) }; var alias by remember { mutableStateOf("") }
     AlertDialog(onDismissRequest=dismiss,title={Text(t("我的机器人","My robots"))},text={
         Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+            WiringRequiredCard(r)
             Text(t("明确选择一台机器人。连接成功后请核对设备信息。","Choose a robot explicitly. Check the device information after connecting."))
             Text(when(status) {"connecting" -> t("正在连接","Connecting"); "ready" -> t("已就绪","Ready"); else -> t("未连接","Disconnected") })
             if(scanning) LinearProgressIndicator(Modifier.fillMaxWidth())

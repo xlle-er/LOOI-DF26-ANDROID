@@ -94,7 +94,7 @@ class DeviceWifiClient(context: Context, private val scope: CoroutineScope) {
         val req=builder.build()
         return withContext(Dispatchers.IO){http.newCall(req).execute().use{r->val body=r.body?.string().orEmpty();check(r.isSuccessful){"Device HTTP ${r.code}"};JSONObject(body)}}
     }
-    suspend fun upload(bytes: ByteArray,name: String,expectedSha: String?=null,closeHotspot: Boolean=true) {
+    suspend fun upload(bytes: ByteArray,name: String,expectedSha: String?=null,closeHotspot: Boolean=true,progress:((Double)->Unit)?=null) {
         check(connected) { "Connect to the device over Wi-Fi first" }
         require(bytes.size in 32..3145728 && name.endsWith(".bin") && bytes[0]==0xe9.toByte()){ "Select an ESP32-S3 application .bin" }
         if(info.value.optInt("hardware_protocol")==1) {
@@ -106,7 +106,8 @@ class DeviceWifiClient(context: Context, private val scope: CoroutineScope) {
         val sha=sha256(bytes);require(expectedSha==null||sha.equals(expectedSha,true)){"Firmware SHA-256 mismatch"}
         heartbeat?.cancel();command(JSONObject().put("type","ota_start").put("close_ap_after_update",closeHotspot))
         val form=MultipartBody.Builder().setType(MultipartBody.FORM).addFormDataPart("firmware",name,bytes.toRequestBody("application/octet-stream".toMediaType())).build()
-        val req=Request.Builder().url("http://$host/update").header("Authorization",Credentials.basic("admin",password)).header("X-OTA-Token",token).header("X-Looi-Client",clientId).header("X-Firmware-Size",bytes.size.toString()).header("X-Firmware-SHA256",sha).post(form).build()
+        val tracked=FirmwareProgressBody(form,progress)
+        val req=Request.Builder().url("http://$host/update").header("Authorization",Credentials.basic("admin",password)).header("X-OTA-Token",token).header("X-Looi-Client",clientId).header("X-Firmware-Size",bytes.size.toString()).header("X-Firmware-SHA256",sha).post(tracked).build()
         withContext(Dispatchers.IO){http.newBuilder().callTimeout(180,TimeUnit.SECONDS).readTimeout(180,TimeUnit.SECONDS).build().newCall(req).execute().use{r->val result=JSONObject(r.body?.string().orEmpty());check(r.isSuccessful&&result.optBoolean("accepted")){result.optString("message","Update failed")}}}
         disconnect()
     }
@@ -126,24 +127,24 @@ class DeviceWifiClient(context: Context, private val scope: CoroutineScope) {
         require(m.getString("version").matches(Regex("""v?[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?""")) && m.getString("chip")=="ESP32-S3" && ((m.getString("partition")=="app3M_fat9M_16MB" && m.optString("board","n16r8")=="n16r8") || (m.getString("partition")=="looi_8m" && m.optString("board")=="n8r8")) && m.getInt("size") in 32..3145728 && m.getString("sha256").matches(Regex("[0-9a-fA-F]{64}"))){"Incompatible firmware release"}
         require(m.getString("url").startsWith("https://github.com/xlle-er/LOOI-DF26-Firmware/releases/")){"Untrusted firmware URL"}
     }
-    suspend fun prepareRelease(m: JSONObject) {
+    suspend fun prepareRelease(m: JSONObject,progress:((Double)->Unit)?=null) {
         validateRelease(m)
-        withContext(Dispatchers.IO){val bytes=fetchHttps(m.getString("url"),3145728);firmwareCache.save(m,bytes)}
+        withContext(Dispatchers.IO){val bytes=fetchHttps(m.getString("url"),3145728,m.getLong("size"),progress);firmwareCache.save(m,bytes)}
         prepared.value=JSONObject(m.toString())
     }
-    suspend fun installPrepared(closeHotspot: Boolean=true,includePreview: Boolean=false) {
+    suspend fun installPrepared(closeHotspot: Boolean=true,includePreview: Boolean=false,progress:((Double)->Unit)?=null) {
         val cached=withContext(Dispatchers.IO){firmwareCache.read()}?:error("Download firmware before joining the ESP hotspot")
         require(FirmwarePackageCache.allowsUpdate(cached.first,includePreview)){"Enable preview updates / 请先开启预览版更新"}
-        upload(cached.second,"looi-s3.bin",cached.first.getString("sha256"),closeHotspot)
+        upload(cached.second,"looi-s3.bin",cached.first.getString("sha256"),closeHotspot,progress)
     }
-    private fun fetchHttps(url: String,limit: Int): ByteArray {
+    private fun fetchHttps(url: String,limit: Int,expected:Long=0,progress:((Double)->Unit)?=null): ByteArray {
         var next=url
         repeat(6){
             val parsed=next.toHttpUrl()
             require(parsed.scheme=="https" && parsed.host in setOf("github.com","release-assets.githubusercontent.com","objects.githubusercontent.com")){"Untrusted release redirect"}
             http.newCall(Request.Builder().url(parsed).build()).execute().use{r->
                 if(r.code in listOf(301,302,307,308)){next=parsed.resolve(r.header("Location")?:error("Missing redirect"))!!.toString()}
-                else {check(r.isSuccessful){"Release unavailable: HTTP ${r.code}"};val input=r.body?.byteStream()?:error("No release data");val output=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192);while(true){val n=input.read(buffer);if(n<0)break;require(output.size()+n<=limit){"Release too large"};output.write(buffer,0,n)};return output.toByteArray()}
+                else {check(r.isSuccessful){"Release unavailable: HTTP ${r.code}"};val input=r.body?.byteStream()?:error("No release data");return readFirmwareStream(input,limit,expected,progress)}
             }
         };error("Too many release redirects")
     }

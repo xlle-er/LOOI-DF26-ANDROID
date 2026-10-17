@@ -18,6 +18,16 @@ import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.*
 import org.json.JSONObject
 
+@Composable fun WiringRequiredCard(r:LooiRuntime){
+    val session=r.robot.management;val state by session.state.collectAsState();val ready by r.robot.ready.collectAsState();var confirm by remember{mutableStateOf(false)}
+    if(ready&&session.needsWiring){
+        Card(colors=CardDefaults.cardColors(containerColor=androidx.compose.ui.graphics.Color(0xFFFFE0B2))){Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(10.dp)){
+            Text(t("⚠ 接线未配置，机器人无法移动","⚠ Motor wiring is not configured. The robot cannot move."),color=androidx.compose.ui.graphics.Color(0xFF512D00),style=MaterialTheme.typography.titleMedium)
+            Button(onClick={if(session.password.isEmpty())session.promptPassword()else confirm=true},enabled=!state.busy,modifier=Modifier.fillMaxWidth()){Text(t("配置接线","Configure motor wiring"))}
+        }}
+    }
+    if(confirm)AlertDialog(onDismissRequest={confirm=false},title={Text(t("确认默认电机接线","Confirm default motor wiring"))},text={Text("ENA 17 · IN1 16 · IN2 15 · IN3 7 · IN4 6 · ENB 5")},confirmButton={TextButton(onClick={confirm=false;session.job{session.restoreDefaultWiring()}}){Text(t("保存接线并重启","Save wiring and restart"))}},dismissButton={TextButton(onClick={confirm=false}){Text(t("取消","Cancel"))}})
+}
 @Composable fun DeviceAccessPrompt(r:LooiRuntime){
     val session=r.robot.management;val state by session.state.collectAsState();var password by remember{mutableStateOf("")};var name by remember{mutableStateOf("")}
     if(state.passwordPrompt||state.namePrompt)AlertDialog(onDismissRequest={session.dismissPrompt()},title={Text(if(state.passwordPrompt)t("设备管理密码","Device admin password") else t("给机器人起个名字","Name your robot"))},text={Column{
@@ -37,7 +47,7 @@ import org.json.JSONObject
     fun calibrate(extra:JSONObject){session.job{val result=session.command("calibration_set",extra);val c=result.getJSONObject("calibration");left=c.getBoolean("left_invert");right=c.getBoolean("right_invert");swap=c.getBoolean("swap")}}
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null)session.job{
         val bytes=withContext(Dispatchers.IO){context.contentResolver.openInputStream(uri)!!.use{input->val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192);while(true){val n=input.read(buffer);if(n<0)break;require(out.size()+n<=3145728){"Firmware exceeds 3 MB"};out.write(buffer,0,n)};out.toByteArray()}}
-        if(state.phase=="hotspot")session.stageLocal(bytes)else{r.robot.wifi.upload(bytes,"firmware.bin",closeHotspot=close);session.verifyReboot(expected=null)}
+        if(state.phase=="hotspot")session.stageLocal(bytes)else{session.uploadLocal(bytes)}
     }}
     val permissions=rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()){values->if(values.values.all{it})session.job{session.joinHotspot()}else r.report(t("连接热点需要 Wi-Fi 权限","Wi-Fi permission is needed to join the hotspot"))}
     LaunchedEffect(Unit){if(ready&&!state.busy)session.job{session.inspect();state.info.optJSONObject("calibration")?.let{left=it.optBoolean("left_invert");right=it.optBoolean("right_invert");swap=it.optBoolean("swap")}}}
@@ -46,6 +56,8 @@ import org.json.JSONObject
             Column(Modifier.padding(16.dp)){
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(if(settings)t("管理设置","Management settings")else t("调试机器人","Debug robot"),style=MaterialTheme.typography.titleLarge);TextButton(onClick={if(settings)settings=false else onDismiss()}){Text(if(settings)t("返回","Back")else t("完成","Done"))}}
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
+                    WiringRequiredCard(r)
+                    if(state.info.optBoolean("ota_mode")){Text(t("升级模式中，运动已锁定","Motion locked in update mode"));TextButton(onClick={session.job{session.exit()}},enabled=!state.busy){Text(t("退出升级模式并恢复控制","Exit update mode and restore control"))}}
                     if(settings){
                         Text(state.info.optString("name","LOOI"));Text(state.info.optString("ip","192.168.4.1"))
                         OutlinedTextField(address,{address=it;session.manualAddress=it},label={Text(t("手动指定 IP（可选）","Manual IP override (optional)"))})
@@ -66,7 +78,7 @@ import org.json.JSONObject
                             0->{
                                 Text(t("先架空车轮，点动最多 300 毫秒。","Lift the wheels. Each test lasts at most 300 ms."))
                                 FlowRow(horizontalArrangement=Arrangement.spacedBy(6.dp)){
-                                    listOf("forward" to t("前进","Forward"),"backward" to t("后退","Backward"),"left" to t("左转","Left"),"right" to t("右转","Right"),"left_forward" to "L+","left_backward" to "L−","right_forward" to "R+","right_backward" to "R−").forEach{(direction,title)->OutlinedButton(onClick={session.job{session.command("control_acquire",JSONObject().put("takeover",true));session.command("calibration_test",JSONObject().put("direction",direction))}},enabled=ready&&!state.busy){Text(title)}}
+                                    listOf("forward" to t("前进","Forward"),"backward" to t("后退","Backward"),"left" to t("左转","Left"),"right" to t("右转","Right"),"left_forward" to "L+","left_backward" to "L−","right_forward" to "R+","right_backward" to "R−").forEach{(direction,title)->OutlinedButton(onClick={session.job{session.command("control_acquire",JSONObject().put("takeover",true));session.command("calibration_test",JSONObject().put("direction",direction))}},enabled=ready&&!state.busy&&!session.needsWiring){Text(title)}}
                                 }
                                 HorizontalDivider();Text(t("电机方向","Motor calibration"))
                                 Row{Checkbox(left,{left=it});Text(t("左轮反向","Invert left"))};Row{Checkbox(right,{right=it});Text(t("右轮反向","Invert right"))};Row{Checkbox(swap,{swap=it});Text(t("交换左右轮","Swap motor sides"))}
@@ -82,6 +94,8 @@ import org.json.JSONObject
                             }
                             2->{
                                 Text(state.info.optString("firmware_version","—")+(state.release?.let{" → "+it.optString("version")}?:""))
+                                OutlinedButton(onClick={session.job{session.checkUpdates()}},enabled=ready&&!state.busy){Text(t("检查更新","Check for updates"))}
+                                if(state.release!=null)Text(if(session.hasUpdate)t("发现新版本","Update available")else t("已是最新版本","Already up to date"))
                                 when(state.phase){
                                     "idle","complete"->Button(onClick={session.job{session.enter()}},enabled=ready&&!state.busy){Text(t("进入升级模式","Enter update mode"))}
                                     "fallback"->Button(onClick={session.job{session.hotspot()}},enabled=!state.busy){Text(t("改用热点升级","Update via hotspot"))}
@@ -91,7 +105,7 @@ import org.json.JSONObject
                                     }else Button(onClick={session.job{session.download()}},enabled=!state.busy){Text(t("下载固件","Download firmware"))}
                                         TextButton(onClick={picker.launch(arrayOf("*/*"))},enabled=!state.busy){Text(t("选择本地 .bin","Choose local .bin"))}
                                     }
-                                    "online","connected"->{if(state.phase=="online"||session.localFirmware!=null||session.compatiblePackage(prepared))Button(onClick={session.job{session.install()}},enabled=!state.busy){Text(t("安装 OTA 更新","Install OTA update"))}else Button(onClick={session.job{session.download()}},enabled=!state.busy){Text(t("下载固件","Download firmware"))};if(r.robot.wifi.connected)OutlinedButton(onClick={picker.launch(arrayOf("*/*"))},enabled=!state.busy){Text(t("上传 bin 更新包","Upload bin package"))}}
+                                    "online","connected"->{if((state.phase=="online"&&session.hasUpdate)||session.localFirmware!=null||(state.phase!="online"&&session.compatiblePackage(prepared)))Button(onClick={session.job{session.install()}},enabled=!state.busy){Text(t("安装 OTA 更新","Install OTA update"))}else Button(onClick={session.job{session.download()}},enabled=!state.busy){Text(t("下载固件","Download firmware"))};if(r.robot.wifi.connected)OutlinedButton(onClick={picker.launch(arrayOf("*/*"))},enabled=!state.busy){Text(t("上传 bin 更新包","Upload bin package"))}}
                                     "rebooting"->TextButton(onClick={session.job{session.verifyReboot()}},enabled=!state.busy){Text(t("核对升级版本","Verify installed version"))}
                                 }
                                 if(state.phase!="idle"&&state.phase!="complete")TextButton(onClick={session.job{session.exit()}},enabled=!state.busy){Text(t("退出升级模式","Exit update mode"))}
@@ -99,7 +113,11 @@ import org.json.JSONObject
                         }
                         TextButton(onClick={settings=true}){Text(t("管理设置","Management settings"))}
                     }
-                    if(state.busy)LinearProgressIndicator(Modifier.fillMaxWidth());Text(state.message)
+                    if(state.busy){
+                        val progress=state.progress
+                        if(progress!=null){LinearProgressIndicator(progress=progress.toFloat(),modifier=Modifier.fillMaxWidth());Text(state.progressLabel+" · "+(progress*100).toInt()+"%")}
+                        else {LinearProgressIndicator(Modifier.fillMaxWidth());if(state.progressLabel.isNotBlank())Text(state.progressLabel)}
+                    };Text(state.message)
                 }
                 Button(onClick={r.scope.launch{runCatching{r.robot.send(JSONObject().put("type","stop"))}}},modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=MaterialTheme.colorScheme.error)){Text(t("立即停止","Stop now"))}
             }

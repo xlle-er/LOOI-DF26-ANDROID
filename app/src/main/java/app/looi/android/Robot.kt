@@ -140,7 +140,7 @@ class RobotClient(private val context: Context, private val scope: CoroutineScop
         } catch(e: Exception) { disconnect(); throw e }
     }
     fun disconnect() {
-        wifi.disconnect()
+        wifi.disconnect(); management.disconnected()
         epoch.incrementAndGet(); ready.value=false; status.value="disconnected"
         activeCommand?.cancel(); activeCommand=null
         connected.completeExceptionally(failure()); discovered.completeExceptionally(failure()); subscribed.completeExceptionally(failure())
