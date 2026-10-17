@@ -112,11 +112,18 @@ class DeviceWifiClient(context: Context, private val scope: CoroutineScope) {
     }
     suspend fun release(includePreview: Boolean=false): JSONObject=withContext(Dispatchers.IO) {
         val boardUrl=if(hardwarePrefs.getString("board","n16r8")=="n8r8") MANIFEST.replace("looi-s3-manifest","looi-s3-n8r8-manifest") else MANIFEST
-        val url=if(includePreview) boardUrl.replace("/latest/download/","/download/preview/") else boardUrl
-        fetchHttps(url,8192).let{JSONObject(it.toString(Charsets.UTF_8))}.put("channel",if(includePreview) "preview" else "stable").also{validateRelease(it)}
+        fun fetch(channel: String): JSONObject {
+            val url=if(channel=="preview") boardUrl.replace("/latest/download/","/download/preview/") else boardUrl
+            return JSONObject(fetchHttps(url,8192).toString(Charsets.UTF_8)).put("channel",channel).also{validateRelease(it)}
+        }
+        if(!includePreview)return@withContext fetch("stable")
+        val stable=runCatching{fetch("stable")}.getOrNull()
+        val preview=runCatching{fetch("preview")}.getOrNull()
+        if(preview!=null&&(stable==null||compareReleaseVersions(preview.getString("version"),stable.getString("version"))>0))preview
+        else stable?:error("Online releases unavailable / 在线版本暂不可用")
     }
     private fun validateRelease(m: JSONObject) {
-        require(m.getString("chip")=="ESP32-S3" && ((m.getString("partition")=="app3M_fat9M_16MB" && m.optString("board","n16r8")=="n16r8") || (m.getString("partition")=="looi_8m" && m.optString("board")=="n8r8")) && m.getInt("size") in 32..3145728 && m.getString("sha256").matches(Regex("[0-9a-fA-F]{64}"))){"Incompatible firmware release"}
+        require(m.getString("version").matches(Regex("""v?[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?""")) && m.getString("chip")=="ESP32-S3" && ((m.getString("partition")=="app3M_fat9M_16MB" && m.optString("board","n16r8")=="n16r8") || (m.getString("partition")=="looi_8m" && m.optString("board")=="n8r8")) && m.getInt("size") in 32..3145728 && m.getString("sha256").matches(Regex("[0-9a-fA-F]{64}"))){"Incompatible firmware release"}
         require(m.getString("url").startsWith("https://github.com/xlle-er/LOOI-DF26-Firmware/releases/")){"Untrusted firmware URL"}
     }
     suspend fun prepareRelease(m: JSONObject) {

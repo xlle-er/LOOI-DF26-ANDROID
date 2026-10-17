@@ -111,7 +111,7 @@ class DeviceSession(private val context:Context,private val robot:RobotClient,pr
     }
     suspend fun install(){val value=state.value
         val expected=value.release?.optString("version")?:robot.wifi.prepared.value?.optString("version");if(localFirmware==null&&expected!=null)prefs.edit().putString("expected.$id",expected).apply()
-        if(value.phase=="online"){command("firmware_install",JSONObject().put("version",value.release!!.getString("version")).put("channel",if(preview)"preview" else "stable").put("close_ap_after_update",closeHotspot));state.update{it.copy(phase="installing")};poll(false)}
+        if(value.phase=="online"){command("firmware_install",JSONObject().put("version",value.release!!.getString("version")).put("channel",value.release.optString("channel",if(preview)"preview" else "stable")).put("close_ap_after_update",closeHotspot));state.update{it.copy(phase="installing")};poll(false)}
         else if(localFirmware!=null){robot.wifi.upload(localFirmware!!,"firmware.bin",closeHotspot=closeHotspot);verifyReboot(expected=null)}
         else{robot.wifi.installPrepared(closeHotspot,preview);verifyReboot()}
     }
