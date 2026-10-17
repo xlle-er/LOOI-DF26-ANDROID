@@ -81,9 +81,9 @@ class CredentialStore(context: Context) {
         }.generateKey()
     }
     @Synchronized fun set(provider: String, secret: String) {
-        if (secret.isBlank()) return // Empty input preserves the stored credential.
+        if (secret.isEmpty() || (!provider.startsWith("device.") && secret.isBlank())) return // Empty input preserves the stored credential.
         val cipher = Cipher.getInstance("AES/GCM/NoPadding"); cipher.init(Cipher.ENCRYPT_MODE, key())
-        val value = Base64.encodeToString(cipher.iv,Base64.NO_WRAP)+":"+Base64.encodeToString(cipher.doFinal(secret.trim().toByteArray()),Base64.NO_WRAP)
+        val value = Base64.encodeToString(cipher.iv,Base64.NO_WRAP)+":"+Base64.encodeToString(cipher.doFinal((if(provider.startsWith("device."))secret else secret.trim()).toByteArray()),Base64.NO_WRAP)
         check(prefs.edit().putString(provider,value).commit())
     }
     @Synchronized fun get(provider: String): String {

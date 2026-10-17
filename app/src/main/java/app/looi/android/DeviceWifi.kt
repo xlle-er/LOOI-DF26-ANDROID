@@ -22,7 +22,7 @@ class DeviceWifiClient(context: Context, private val scope: CoroutineScope) {
     val info=MutableStateFlow(JSONObject())
     var connected=false; private set
     var onLost: ()->Unit = {}
-    private val http=OkHttpClient.Builder().connectTimeout(3,TimeUnit.SECONDS).readTimeout(8,TimeUnit.SECONDS).callTimeout(12,TimeUnit.SECONDS).followRedirects(false).build()
+    private var http=OkHttpClient.Builder().connectTimeout(3,TimeUnit.SECONDS).readTimeout(8,TimeUnit.SECONDS).callTimeout(12,TimeUnit.SECONDS).followRedirects(false).build()
     private var host=""; private var password=""; private var token=""
     private val clientId=UUID.randomUUID().toString()
     private var heartbeat: Job?=null; private var epoch=0L
@@ -40,6 +40,7 @@ class DeviceWifiClient(context: Context, private val scope: CoroutineScope) {
         }
         fun sha256(bytes: ByteArray)=MessageDigest.getInstance("SHA-256").digest(bytes).joinToString(""){"%02x".format(it)}
     }
+    fun useNetwork(network:android.net.Network?) { http=http.newBuilder().socketFactory(network?.socketFactory?:javax.net.SocketFactory.getDefault()).dns(if(network==null) Dns.SYSTEM else object:Dns { override fun lookup(hostname:String)=network.getAllByName(hostname).toList() }).build() }
     suspend fun connect(address: String, adminPassword: String) {
         disconnect(); host=localHost(address); password=adminPassword
         val result=refresh(); require(result.optString("chip")=="ESP32-S3") { "Unsupported device" }

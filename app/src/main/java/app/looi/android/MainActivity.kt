@@ -70,9 +70,11 @@ class MainActivity: ComponentActivity() {
             else { authorizationPending=false; authorized(result) }
         }.addOnFailureListener { authorizationPending=false; authFailure() }
     }
+    override fun onResume() { super.onResume(); runtime().scope.launch { runtime().updates.resume() } }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState); enableEdgeToEdge(statusBarStyle=androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),navigationBarStyle=androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT))
         setContent { val model: LooiViewModel=androidx.lifecycle.viewmodel.compose.viewModel(); LooiTheme { LooiApp(model.runtime,this) } }
+        runtime().scope.launch { runtime().updates.resume() }
         runtime().camera.setRotation(windowManager.defaultDisplay.rotation)
     }
 }
@@ -85,6 +87,7 @@ class MainActivity: ComponentActivity() {
     val robotReady by r.robot.ready.collectAsState()
     var permissionToken by rememberSaveable { mutableStateOf<Long?>(null) }
     var permissionPurpose by rememberSaveable { mutableStateOf("") }
+    var showDebug by remember { mutableStateOf(false) }
     var showRobots by remember { mutableStateOf(false) }
     var showConfig by remember { mutableStateOf(false) }
     val permissions=rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -119,7 +122,7 @@ class MainActivity: ComponentActivity() {
             key(companion) { AndroidView(factory={ r.face.create() }, modifier=Modifier.fillMaxSize(), onRelease={ r.face.release(it) },update={ it.post { it.evaluateJavascript("window.looiFace?.resize()",null) }; it.visibility=if(companion) android.view.View.VISIBLE else android.view.View.INVISIBLE; it.importantForAccessibility=if(companion) android.view.View.IMPORTANT_FOR_ACCESSIBILITY_AUTO else android.view.View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS }) }
             if(companion) CompanionScreen(r,s) {
                 permissionPurpose="camera"; permissions.launch(arrayOf(Manifest.permission.CAMERA))
-            } else SettingsScreen(r,s,{showRobots=true},{showConfig=true},{begin(false)},{begin(true)})
+            } else SettingsScreen(r,s,{showRobots=true},{showDebug=true},{showConfig=true},{begin(false)},{begin(true)})
             if(s.message.isNotBlank()) {
                 Surface(Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(16.dp).widthIn(max=640.dp),shape=RoundedCornerShape(16.dp),color=MaterialTheme.colorScheme.secondaryContainer) {
                     Row(Modifier.padding(start=16.dp,end=4.dp,top=4.dp,bottom=4.dp),verticalAlignment=Alignment.CenterVertically) {
@@ -132,10 +135,14 @@ class MainActivity: ComponentActivity() {
     }
     if(remote.presented) RemoteDialog(r.remote,robotReady)
     if(showConfig) ConfigDialog(r,s,{activity.authorizeGoogle()}) { showConfig=false }
-    if(showRobots) RobotDialog(r,s,::scan) { r.robot.stopScan(); showRobots=false }
+    LaunchedEffect(robotReady) { if(robotReady) r.robot.management.job { r.robot.management.inspect() } }
+    AppUpdatePrompt(r,activity,s.phase==Phase.IDLE&&!showDebug&&!showRobots&&!showConfig)
+    DeviceAccessPrompt(r)
+    if(showDebug) DeviceManagementDialog(r) { showDebug=false }
+    if(showRobots) RobotDialog(r,s,::scan) { r.robot.stopScan(); r.robot.wifi.stopDiscovery(); showRobots=false }
 }
 }
-@Composable private fun SettingsScreen(r: LooiRuntime,s: AppState,robots: ()->Unit,configure: ()->Unit,start: ()->Unit,test: ()->Unit) {
+@Composable private fun SettingsScreen(r: LooiRuntime,s: AppState,robots: ()->Unit,debug: ()->Unit,configure: ()->Unit,start: ()->Unit,test: ()->Unit) {
     val ready by r.robot.ready.collectAsState()
     val remote by r.remote.state.collectAsState()
     val idle=s.phase == Phase.IDLE && !remote.presented && remote.phase != RemotePhase.STOPPING
@@ -146,15 +153,22 @@ class MainActivity: ComponentActivity() {
             Text(t("把手机放在机器人上，让陪伴开始。","Place your phone on your robot and make yourself at home."),color=MaterialTheme.colorScheme.onSurfaceVariant)
             SettingCard(t("连接与对话","Connection & conversation")) {
                 Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick=robots,enabled=idle,modifier=Modifier.weight(1f)) { Text(t("我的机器人","My robots")) }
+                    OutlinedButton(onClick=robots,enabled=idle,modifier=Modifier.weight(1f)) { Text(t("连接机器人","Connect robot")) }
                     OutlinedButton(onClick=configure,enabled=idle,modifier=Modifier.weight(1f)) { Text(t("AI 服务","AI services")) }
                 }
+                OutlinedButton(onClick=debug,enabled=idle,modifier=Modifier.fillMaxWidth()) { Text(t("调试机器人","Debug robot")) }
                 Text((if(ready) t("机器人已连接","Robot connected") else t("不连接机器人也能陪伴","Companionship works without a robot"))+" · "+s.config.provider,style=MaterialTheme.typography.bodyMedium)
                 OutlinedButton(onClick=r::openRemote,enabled=idle && ready) {Text(t("遥控器","Remote control"))}
                 Toggle(t("实时语音","Live voice"),s.liveMode,idle && s.config.provider in listOf("gemini","vertex"),r::setLive)
                 Toggle(t("开启相机","Camera"),s.cameraWanted,idle,r::cameraWanted)
                 OutlinedButton(onClick=r::flipCamera,enabled=idle) {Text(if(s.frontCamera) t("当前前置镜头 · 切换","Front lens · switch") else t("当前后置镜头 · 切换","Rear lens · switch"))}
                 Text(t("启动时申请相机与麦克风；打开机器人列表后才扫描附近设备。","Camera and microphone are requested when starting; nearby devices are scanned from the robot list."),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            SettingCard(t("客户端更新","App updates")) {
+                val update by r.updates.state.collectAsState()
+                Text("LOOI "+BuildConfig.VERSION_NAME)
+                OutlinedButton(onClick={if(update.stage in listOf("ready","installing")) r.updates.requestInstall() else r.updates.check(true)}) {Text(if(update.stage in listOf("ready","installing")) t("安装更新","Install update") else t("检查更新","Check for updates"))}
+                if(update.message.isNotEmpty())Text(update.message)
             }
             SettingCard(t("独立测试","Test each component")) {
                 FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -228,9 +242,9 @@ class MainActivity: ComponentActivity() {
 }
 @Composable private fun Field(label: String,value: String,onChange: (String)->Unit) { OutlinedTextField(value,onChange,label={Text(label)},modifier=Modifier.fillMaxWidth(),singleLine=true) }
 @Composable private fun RobotDialog(r: LooiRuntime,s: AppState,scan: ()->Unit,dismiss: ()->Unit) {
+    val found by r.robot.wifi.devices.collectAsState()
     val rows by r.robot.robots.collectAsState(); val scanning by r.robot.scanning.collectAsState(); val status by r.robot.status.collectAsState(); val ready by r.robot.ready.collectAsState()
-    var managing by remember { mutableStateOf(false) }
-    if(managing) DeviceManagementDialog(r) { managing=false }
+
     var edited by remember { mutableStateOf<RobotRow?>(null) }; var alias by remember { mutableStateOf("") }
     AlertDialog(onDismissRequest=dismiss,title={Text(t("我的机器人","My robots"))},text={
         Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -248,7 +262,8 @@ class MainActivity: ComponentActivity() {
                     TextButton(onClick={edited=row;alias=row.alias}) {Text(t("别名","Alias"))}
                 }
             }
-            TextButton(onClick={ managing=true }) { Text(t("Wi-Fi / 配网 / 校准 / 升级", "Wi-Fi / Setup / Calibration / Update")) }
+            TextButton(onClick={r.robot.wifi.discover()}){Text(t("搜索局域网机器人","Find LAN robots"))}
+            found.forEach{(name,host)->TextButton(onClick={r.robot.management.requestNetwork(host)}){Text(name)}}
             if(rows.isEmpty()) Text(t("尚未发现设备","No devices found yet"))
             FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick=scan,enabled=!scanning) {Text(t("扫描 15 秒","Scan for 15s"))}

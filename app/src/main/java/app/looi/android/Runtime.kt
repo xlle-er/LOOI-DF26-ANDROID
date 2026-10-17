@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit
 class LooiApplication: Application(), DefaultLifecycleObserver {
     lateinit var runtime: LooiRuntime; private set
     override fun onCreate() {
-        super<Application>.onCreate(); runtime=LooiRuntime(this)
+        super<Application>.onCreate(); runtime=LooiRuntime(this); runtime.updates.check()
         ProcessLifecycleOwner.get().lifecycle.addObserver(this)
     }
     override fun onStop(owner: LifecycleOwner) { runtime.background() }
@@ -38,6 +38,7 @@ class LooiRuntime(private val context: Context) {
     private val credentials=CredentialStore(context)
     val audio=AudioEngine(context,scope,::report)
     val robot=RobotClient(context,scope,::report)
+    val updates=AppUpdateManager(context,scope)
     val motion=MotionArbiter(robot)
     val camera=CameraEngine(context,scope,::report)
     val face=FaceHost(context,scope,::report)

@@ -20,13 +20,18 @@ import java.util.concurrent.atomic.AtomicLong
 @SuppressLint("MissingPermission")
 class RobotClient(private val context: Context, private val scope: CoroutineScope, private val report: (String)->Unit): RobotTransport {
     val wifi = DeviceWifiClient(context, scope)
-    init { wifi.onLost = { ready.value=false; status.value="disconnected"; onDisconnect() } }
+    val management by lazy { DeviceSession(context,this,scope) }
+    init { wifi.onLost = { if(gatt==null || writeChar==null) { ready.value=false; status.value="disconnected"; onDisconnect() } } }
     suspend fun connectWifi(address: String,password: String) {
         if(ready.value) runCatching { send(JSONObject().put("type","stop")) }
         disconnect(); stopScan(); wifi.connect(address,password)
         this.address=wifi.info.value.optString("device_id"); ready.value=true; status.value="ready"
     }
-    suspend fun manage(payload: JSONObject,password: String): JSONObject = send(JSONObject(payload.toString()).put("admin_password",password))
+    suspend fun manage(payload: JSONObject,password: String): JSONObject {
+        val packet=JSONObject(payload.toString()).put("admin_password",password)
+        return if(gatt!=null&&writeChar!=null) sendInternal(packet) else send(packet)
+    }
+    suspend fun deviceStatus():JSONObject = if(gatt!=null&&writeChar!=null)sendInternal(JSONObject().put("type","device_status")) else send(JSONObject().put("type","device_status"))
     private val adapter get() = context.getSystemService(BluetoothManager::class.java)?.adapter
     val robots = MutableStateFlow<List<RobotRow>>(emptyList())
     val status = MutableStateFlow("")
@@ -181,7 +186,7 @@ class RobotClient(private val context: Context, private val scope: CoroutineScop
                 val id=UUID.randomUUID().toString(); val ack=CompletableDeferred<JSONObject>(); acknowledgements[id]=ack
                 try {
                     val value=withTimeout(5000) { writePacket(BodyProtocol.packet(payload,id)); ack.await() }
-                    check(value.optString("type") in (when(payload.optString("type")) { "ping" -> setOf("ack","pong"); "config_get" -> setOf("config"); else -> setOf("ack") }) && value.opt("accepted") != false) { t("机器人拒绝指令", "Robot rejected the command") }
+                    check(value.optString("type") in (when(payload.optString("type")) { "ping" -> setOf("ack","pong"); "config_get" -> setOf("config"); else -> setOf("ack") }) && value.opt("accepted") != false) { value.optString("message",t("机器人拒绝指令", "Robot rejected the command")) }
                     value
                 } catch(e: Exception) {
                     if(e !is CancellationException || e is TimeoutCancellationException) onDisconnect()

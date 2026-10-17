@@ -1,5 +1,7 @@
 package app.looi.android
 
+import android.Manifest
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -11,86 +13,96 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.*
 import org.json.JSONObject
 
+@Composable fun DeviceAccessPrompt(r:LooiRuntime){
+    val session=r.robot.management;val state by session.state.collectAsState();var password by remember{mutableStateOf("")};var name by remember{mutableStateOf("")}
+    if(state.passwordPrompt||state.namePrompt)AlertDialog(onDismissRequest={session.dismissPrompt()},title={Text(if(state.passwordPrompt)t("设备管理密码","Device admin password") else t("给机器人起个名字","Name your robot"))},text={Column{
+        if(state.passwordPrompt)OutlinedTextField(password,{password=it},label={Text(t("设备管理密码","Device password"))},visualTransformation=PasswordVisualTransformation())
+        else OutlinedTextField(name,{name=it},label={Text(t("名字（支持中文）","Name (Chinese supported)"))})
+        if(state.busy)LinearProgressIndicator();Text(state.message)
+    }},confirmButton={TextButton(onClick={session.job{if(state.passwordPrompt)session.authenticate(password)else session.rename(name)}},enabled=!state.busy){Text(t("保存","Save"))}},dismissButton={TextButton(onClick={session.dismissPrompt()},enabled=!state.busy){Text(if(state.namePrompt)t("保留识别码","Keep device ID")else t("稍后","Later"))}})
+}
 @OptIn(ExperimentalLayoutApi::class)
-@Composable fun DeviceManagementDialog(r: LooiRuntime,onDismiss: ()->Unit) {
-    val scope=rememberCoroutineScope();val context=LocalContext.current
-    val updatePrefs=remember{context.getSharedPreferences("looi-updates",android.content.Context.MODE_PRIVATE)}
-    var previewUpdates by remember{mutableStateOf(updatePrefs.getBoolean("preview",false))}
-    var closeHotspot by remember{mutableStateOf(true)}
-    var address by remember{mutableStateOf("192.168.4.1")};var admin by remember{mutableStateOf("12345678")}
-    var ssid by remember{mutableStateOf("")};var password by remember{mutableStateOf("")}
-    var left by remember{mutableStateOf(true)};var right by remember{mutableStateOf(false)};var swap by remember{mutableStateOf(false)}
-    var busy by remember{mutableStateOf(false)};var message by remember{mutableStateOf("")};var info by remember{mutableStateOf(JSONObject())}
-    var release by remember{mutableStateOf<JSONObject?>(null)};var networks by remember{mutableStateOf<List<String>>(emptyList())}
-    val prepared by r.robot.wifi.prepared.collectAsState()
-    val found by r.robot.wifi.devices.collectAsState()
-    fun job(block:suspend ()->Unit){scope.launch{busy=true;try{block()}catch(e:CancellationException){throw e}catch(e:Exception){message=e.message.orEmpty()}finally{busy=false}}}
-    suspend fun command(type:String,extra:JSONObject=JSONObject()):JSONObject=r.robot.manage(extra.put("type",type),admin)
-    suspend fun refresh(){info=command("device_status");info.optJSONObject("calibration")?.let{left=it.optBoolean("left_invert");right=it.optBoolean("right_invert");swap=it.optBoolean("swap")}}
-    val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null)job{
-        require(r.robot.wifi.connected){t("请先通过 Wi-Fi 连接设备","Connect to the device over Wi-Fi first")}
-        val bytes=withContext(Dispatchers.IO){context.contentResolver.openInputStream(uri)!!.use{input->val out=java.io.ByteArrayOutputStream();val buf=ByteArray(8192);while(true){val n=input.read(buf);if(n<0)break;require(out.size()+n<=3145728){"Firmware exceeds 3 MB"};out.write(buf,0,n)};out.toByteArray()}}
-        r.robot.wifi.upload(bytes,"looi-s3.bin",closeHotspot=closeHotspot);r.robot.disconnect();message=t("升级成功，请断开 ESP 热点并恢复互联网，再使用 AI 陪伴；重连设备核对版本","Update accepted. Leave the ESP hotspot and restore internet before AI companionship; reconnect to verify the version")
+@Composable fun DeviceManagementDialog(r:LooiRuntime,onDismiss:()->Unit){
+    val context=LocalContext.current;val session=r.robot.management;val state by session.state.collectAsState();val ready by r.robot.ready.collectAsState();val prepared by r.robot.wifi.prepared.collectAsState()
+    val prefs=remember{context.getSharedPreferences("looi-updates",android.content.Context.MODE_PRIVATE)}
+    var tab by remember{mutableStateOf(0)};var settings by remember{mutableStateOf(false)}
+    var ssid by remember{mutableStateOf("")};var routerPassword by remember{mutableStateOf("")};var address by remember{mutableStateOf("")};var name by remember{mutableStateOf("")};var password by remember{mutableStateOf("")}
+    var left by remember{mutableStateOf(true)};var right by remember{mutableStateOf(false)};var swap by remember{mutableStateOf(false)};var networks by remember{mutableStateOf<List<String>>(emptyList())}
+    var preview by remember{mutableStateOf(session.preview)};var close by remember{mutableStateOf(session.closeHotspot)}
+    fun calibrate(extra:JSONObject){session.job{val result=session.command("calibration_set",extra);val c=result.getJSONObject("calibration");left=c.getBoolean("left_invert");right=c.getBoolean("right_invert");swap=c.getBoolean("swap")}}
+    val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null)session.job{
+        val bytes=withContext(Dispatchers.IO){context.contentResolver.openInputStream(uri)!!.use{input->val out=java.io.ByteArrayOutputStream();val buffer=ByteArray(8192);while(true){val n=input.read(buffer);if(n<0)break;require(out.size()+n<=3145728){"Firmware exceeds 3 MB"};out.write(buffer,0,n)};out.toByteArray()}}
+        if(state.phase=="hotspot")session.stageLocal(bytes)else{r.robot.wifi.upload(bytes,"firmware.bin",closeHotspot=close);session.verifyReboot(expected=null)}
     }}
-    DisposableEffect(Unit){onDispose{r.robot.wifi.stopDiscovery()}}
-    AlertDialog(onDismissRequest={if(!busy)onDismiss()},title={Text(t("设备管理","Device management"))},text={
-        Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
-            Text(t("Wi-Fi 连接 / BLE 配网","Wi-Fi connection / BLE provisioning"),style=MaterialTheme.typography.titleMedium)
-            Text(t("先连接 ESP 热点或同一局域网。通过 BLE 配网时无需 Wi-Fi 连接。","Join the ESP hotspot or the same LAN. BLE provisioning does not require a Wi-Fi connection."))
-            OutlinedTextField(address,{address=it},label={Text(t("设备 IP","Device IP"))},singleLine=true)
-            OutlinedTextField(admin,{admin=it},label={Text(t("设备管理密码","Device password"))},visualTransformation=PasswordVisualTransformation(),singleLine=true)
-            FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                Button(onClick={job{r.robot.connectWifi(address,admin);refresh();message=t("Wi-Fi 已连接","Wi-Fi connected")}},enabled=!busy){Text(t("Wi-Fi 连接","Connect Wi-Fi"))}
-                OutlinedButton(onClick={r.robot.wifi.discover()},enabled=!busy){Text(t("发现设备","Discover"))}
-                OutlinedButton(onClick={job{refresh()}},enabled=!busy){Text(t("读取状态","Refresh"))}
+    val permissions=rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()){values->if(values.values.all{it})session.job{session.joinHotspot()}else r.report(t("连接热点需要 Wi-Fi 权限","Wi-Fi permission is needed to join the hotspot"))}
+    LaunchedEffect(Unit){if(ready&&!state.busy)session.job{session.inspect();state.info.optJSONObject("calibration")?.let{left=it.optBoolean("left_invert");right=it.optBoolean("right_invert");swap=it.optBoolean("swap")}}}
+    Dialog(onDismissRequest=onDismiss,properties=DialogProperties(usePlatformDefaultWidth=false)){
+        Surface(Modifier.fillMaxWidth().fillMaxHeight(.94f).padding(12.dp),shape=MaterialTheme.shapes.extraLarge){
+            Column(Modifier.padding(16.dp)){
+                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween){Text(if(settings)t("管理设置","Management settings")else t("调试机器人","Debug robot"),style=MaterialTheme.typography.titleLarge);TextButton(onClick={if(settings)settings=false else onDismiss()}){Text(if(settings)t("返回","Back")else t("完成","Done"))}}
+                Column(Modifier.weight(1f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(10.dp)){
+                    if(settings){
+                        Text(state.info.optString("name","LOOI"));Text(state.info.optString("ip","192.168.4.1"))
+                        OutlinedTextField(address,{address=it;session.manualAddress=it},label={Text(t("手动指定 IP（可选）","Manual IP override (optional)"))})
+                        Button(onClick={session.job{if(state.info.length()==0)session.requestNetwork(address.ifBlank{"192.168.4.1"})else session.connectHTTP(address.ifBlank{state.info.optString("ip","192.168.4.1")})}},enabled=!state.busy){Text(t("连接","Connect"))}
+                        if(session.identity){
+                            OutlinedTextField(name,{name=it},label={Text(t("机器人名字（支持中文）","Robot name (Chinese supported)"))})
+                            TextButton(onClick={session.job{session.rename(name)}},enabled=!state.busy){Text(t("修改机器人名字","Change robot name"))}
+                            OutlinedTextField(password,{password=it},label={Text(t("新管理密码","New admin password"))},visualTransformation=PasswordVisualTransformation())
+                            TextButton(onClick={session.job{session.changePassword(password);password=""}},enabled=!state.busy){Text(t("修改管理密码","Change admin password"))}
+                        }else Text(t("升级固件后可修改名称和密码","Update firmware to change the name and password"))
+                        TextButton(onClick={session.promptPassword()}){Text(t("重新输入管理密码","Re-enter admin password"))}
+                        Row{Switch(preview,{preview=it;prefs.edit().putBoolean("preview",it).apply();session.state.value=session.state.value.copy(release=null,phase="idle")},enabled=!state.busy);Text(t("预览版更新","Preview firmware updates"))}
+                        Row{Switch(close,{close=it;prefs.edit().putBoolean("close",it).apply()},enabled=!state.busy);Text(t("升级后关闭 ESP 热点","Close hotspot after update"))}
+                    }else{
+                        TabRow(selectedTabIndex=tab){listOf(t("马达测试","Motor tests"),t("配网","Wi-Fi setup"),"OTA").forEachIndexed{i,title->Tab(selected=tab==i,onClick={tab=i},text={Text(title)})}}
+                        if(!ready)Text(t("请先连接机器人","Connect a robot first"))
+                        when(tab){
+                            0->{
+                                Text(t("先架空车轮，点动最多 300 毫秒。","Lift the wheels. Each test lasts at most 300 ms."))
+                                FlowRow(horizontalArrangement=Arrangement.spacedBy(6.dp)){
+                                    listOf("forward" to t("前进","Forward"),"backward" to t("后退","Backward"),"left" to t("左转","Left"),"right" to t("右转","Right"),"left_forward" to "L+","left_backward" to "L−","right_forward" to "R+","right_backward" to "R−").forEach{(direction,title)->OutlinedButton(onClick={session.job{session.command("control_acquire",JSONObject().put("takeover",true));session.command("calibration_test",JSONObject().put("direction",direction))}},enabled=ready&&!state.busy){Text(title)}}
+                                }
+                                HorizontalDivider();Text(t("电机方向","Motor calibration"))
+                                Row{Checkbox(left,{left=it});Text(t("左轮反向","Invert left"))};Row{Checkbox(right,{right=it});Text(t("右轮反向","Invert right"))};Row{Checkbox(swap,{swap=it});Text(t("交换左右轮","Swap motor sides"))}
+                                Button(onClick={calibrate(JSONObject().put("left_invert",left).put("right_invert",right).put("swap",swap))},enabled=ready&&!state.busy){Text(t("保存方向","Save direction"))}
+                                FlowRow{TextButton(onClick={calibrate(JSONObject().put("shortcut","reverse_forward"))},enabled=ready&&!state.busy){Text(t("前后反了","Reverse forward/back"))};TextButton(onClick={calibrate(JSONObject().put("shortcut","reverse_steering"))},enabled=ready&&!state.busy){Text(t("左右反了","Reverse steering"))};TextButton(onClick={calibrate(JSONObject().put("reset",true))},enabled=ready&&!state.busy){Text(t("恢复默认","Reset"))}}
+                            }
+                            1->{
+                                OutlinedTextField(ssid,{ssid=it},label={Text(t("Wi-Fi 名称","Wi-Fi name"))});OutlinedTextField(routerPassword,{routerPassword=it},label={Text(t("Wi-Fi 密码","Wi-Fi password"))},visualTransformation=PasswordVisualTransformation())
+                                OutlinedButton(onClick={session.job{var result=session.command("wifi_scan");withTimeout(30000){while(result.optBoolean("scanning")){delay(1000);result=session.command("wifi_scan")}};val a=result.optJSONArray("networks");networks=(0 until (a?.length()?:0)).map{a!!.getJSONObject(it).getString("ssid")}}},enabled=ready&&!state.busy){Text(t("扫描 Wi-Fi","Scan Wi-Fi"))}
+                                networks.forEach{n->TextButton(onClick={ssid=n}){Text(n)}}
+                                Button(onClick={session.job{session.command("wifi_configure",JSONObject().put("ssid",ssid).put("password",routerPassword));routerPassword=""}},enabled=ready&&!state.busy){Text(t("保存并连接","Save and connect"))}
+                                TextButton(onClick={session.job{session.command("wifi_forget")}},enabled=ready&&!state.busy){Text(t("忘记网络","Forget network"))}
+                            }
+                            2->{
+                                Text(state.info.optString("firmware_version","—")+(state.release?.let{" → "+it.optString("version")}?:""))
+                                when(state.phase){
+                                    "idle","complete"->Button(onClick={session.job{session.enter()}},enabled=ready&&!state.busy){Text(t("进入升级模式","Enter update mode"))}
+                                    "fallback"->Button(onClick={session.job{session.hotspot()}},enabled=!state.busy){Text(t("改用热点升级","Update via hotspot"))}
+                                    "hotspot"->{if(session.localFirmware!=null||session.compatiblePackage(prepared)){
+                                        Text(t("固件已下载","Firmware downloaded")+" · "+(prepared?.optString("version")?:"bin"))
+                                        Button(onClick={permissions.launch(if(Build.VERSION.SDK_INT>=33)arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES)else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION,Manifest.permission.ACCESS_COARSE_LOCATION))},enabled=!state.busy){Text(t("连接热点","Connect hotspot"))}
+                                    }else Button(onClick={session.job{session.download()}},enabled=!state.busy){Text(t("下载固件","Download firmware"))}
+                                        TextButton(onClick={picker.launch(arrayOf("*/*"))},enabled=!state.busy){Text(t("选择本地 .bin","Choose local .bin"))}
+                                    }
+                                    "online","connected"->{if(state.phase=="online"||session.localFirmware!=null||session.compatiblePackage(prepared))Button(onClick={session.job{session.install()}},enabled=!state.busy){Text(t("安装 OTA 更新","Install OTA update"))}else Button(onClick={session.job{session.download()}},enabled=!state.busy){Text(t("下载固件","Download firmware"))};if(r.robot.wifi.connected)OutlinedButton(onClick={picker.launch(arrayOf("*/*"))},enabled=!state.busy){Text(t("上传 bin 更新包","Upload bin package"))}}
+                                    "rebooting"->TextButton(onClick={session.job{session.verifyReboot()}},enabled=!state.busy){Text(t("核对升级版本","Verify installed version"))}
+                                }
+                                if(state.phase!="idle"&&state.phase!="complete")TextButton(onClick={session.job{session.exit()}},enabled=!state.busy){Text(t("退出升级模式","Exit update mode"))}
+                            }
+                        }
+                        TextButton(onClick={settings=true}){Text(t("管理设置","Management settings"))}
+                    }
+                    if(state.busy)LinearProgressIndicator(Modifier.fillMaxWidth());Text(state.message)
+                }
+                Button(onClick={r.scope.launch{runCatching{r.robot.send(JSONObject().put("type","stop"))}}},modifier=Modifier.fillMaxWidth(),colors=ButtonDefaults.buttonColors(containerColor=MaterialTheme.colorScheme.error)){Text(t("立即停止","Stop now"))}
             }
-            found.forEach{(name,ip)->TextButton(onClick={address=ip}){Text("$name · $ip")}}
-            Text(listOf(info.optString("device_id"),info.optString("firmware_version"),info.optString("network_state"),info.optString("ip")).filter{it.isNotEmpty()}.joinToString(" · "))
-            Text(t("配网","Wi-Fi setup"),style=MaterialTheme.typography.titleMedium)
-            OutlinedTextField(ssid,{ssid=it},label={Text(t("Wi-Fi 名称","Wi-Fi name"))},singleLine=true)
-            OutlinedTextField(password,{password=it},label={Text(t("Wi-Fi 密码","Wi-Fi password"))},visualTransformation=PasswordVisualTransformation(),singleLine=true)
-            FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                OutlinedButton(onClick={job{var result=command("wifi_scan");while(result.optBoolean("scanning")){delay(1000);result=command("wifi_scan")};val a=result.optJSONArray("networks");networks=(0 until (a?.length()?:0)).map{a!!.getJSONObject(it).getString("ssid")}}},enabled=!busy){Text(t("扫描 Wi-Fi","Scan Wi-Fi"))}
-                Button(onClick={job{command("wifi_configure",JSONObject().put("ssid",ssid).put("password",password));password="";message=t("正在连接，稍后读取状态查看 IP","Connecting. Refresh status shortly to see the IP")}},enabled=!busy){Text(t("保存并连接","Save and connect"))}
-                TextButton(onClick={job{command("wifi_forget");message=t("已忘记网络","Network forgotten")}},enabled=!busy){Text(t("忘记网络","Forget network"))}
-            }
-            networks.forEach{name->TextButton(onClick={ssid=name}){Text(name)}}
-            HorizontalDivider();Text(t("方向校准","Motor calibration"),style=MaterialTheme.typography.titleMedium)
-            Text(t("先架空车轮。点动每次最多 300 毫秒。","Lift the wheels first. Each test lasts at most 300 ms."))
-            Row{Checkbox(left,{left=it});Text(t("左轮反向","Invert left motor"))};Row{Checkbox(right,{right=it});Text(t("右轮反向","Invert right motor"))};Row{Checkbox(swap,{swap=it});Text(t("交换左右轮","Swap motor sides"))}
-            FlowRow(horizontalArrangement=Arrangement.spacedBy(8.dp)){
-                Button(onClick={job{command("calibration_set",JSONObject().put("left_invert",left).put("right_invert",right).put("swap",swap));refresh()}},enabled=!busy){Text(t("保存方向","Save direction"))}
-                OutlinedButton(onClick={job{command("calibration_set",JSONObject().put("reset",true));refresh()}},enabled=!busy){Text(t("恢复默认","Reset"))}
-                OutlinedButton(onClick={job{command("calibration_set",JSONObject().put("shortcut","reverse_forward"));refresh()}},enabled=!busy){Text(t("前后反了","Reverse forward/back"))}
-                OutlinedButton(onClick={job{command("calibration_set",JSONObject().put("shortcut","reverse_steering"));refresh()}},enabled=!busy){Text(t("左右反了","Reverse steering"))}
-            }
-            Button(onClick={job{command("control_acquire",JSONObject().put("takeover",true));message=t("已接管控制","Control acquired")}},enabled=!busy){Text(t("接管控制","Take control"))}
-            FlowRow(horizontalArrangement=Arrangement.spacedBy(6.dp)){
-                listOf("forward" to t("前进","Forward"),"backward" to t("后退","Backward"),"left" to t("左转","Left"),"right" to t("右转","Right"),"left_forward" to "L+","left_backward" to "L−","right_forward" to "R+","right_backward" to "R−").forEach{(direction,title)->OutlinedButton(onClick={job{command("control_acquire",JSONObject().put("takeover",true));command("calibration_test",JSONObject().put("direction",direction))}},enabled=!busy){Text(title)}}
-                Button(onClick={scope.launch{runCatching{command("stop")}}}){Text(t("立即停止","Stop now"))}
-            }
-            HorizontalDivider();Text(t("固件升级","Firmware update"),style=MaterialTheme.typography.titleMedium)
-            Text(t("1. 有网时先下载并校验固件。2. 连接 ESP 热点。3. 连接设备，上传已保存固件。","1. Download and verify while online. 2. Join the ESP hotspot. 3. Connect the device and upload the saved firmware."))
-            Text(t("初版仅热点 OTA 固件：先下载 .bin，再通过热点的 192.168.4.1 面板选择本地文件升级。","Initial hotspot-only firmware: download the .bin first, then upload it using the device panel at 192.168.4.1."))
-            Text(t("升级后请及时断开 ESP 热点，恢复流量或可上网的 Wi-Fi，再启动 AI 陪伴。","After updating, leave the ESP hotspot and restore mobile data or internet Wi-Fi before starting AI companionship."))
-            if(info.length()>0&&!info.optBoolean("ota_ap_shutdown_supported"))Text(t("当前设备固件不支持自动关闭，本次升级后请手动断开热点。","Current firmware requires manually leaving the hotspot after this update."))
-            Row{Switch(previewUpdates,{previewUpdates=it;updatePrefs.edit().putBoolean("preview",it).apply();release=null},enabled=!busy);Text(t("预览版更新","Preview firmware updates"))}
-            Text(t("预览通道的版本可能尚未完成硬件验证。关闭后使用稳定版本。","Preview releases may not have completed hardware testing. Turn off to use stable releases."))
-            Row{Switch(closeHotspot,{closeHotspot=it},enabled=!busy);Text(t("升级后关闭 ESP 热点","Close ESP hotspot after update"))}
-            Text(t("需要设备固件支持；手机是否自动恢复互联网由系统决定。长按 BOOT 3 秒可重新开启热点。","Requires device firmware support. Your phone decides whether internet reconnects automatically. Hold BOOT for 3 seconds to reopen the hotspot."))
-            Button(onClick={picker.launch(arrayOf("*/*"))},enabled=!busy){Text(t("选择 .bin 升级","Choose .bin"))}
-            OutlinedButton(onClick={job{release=r.robot.wifi.release(previewUpdates);message=t("在线版本：","Online version: ")+release!!.getString("version")}},enabled=!busy){Text(t("检查在线版本","Check for updates"))}
-            release?.let{Text(it.getString("version")+" · "+if(it.optString("channel")=="preview") t("预览版","Preview") else t("稳定版","Stable"))}
-            Button(onClick={job{message=t("正在下载并校验，请保持互联网连接","Downloading and verifying; stay online");val manifest=release?:r.robot.wifi.release(previewUpdates);r.robot.wifi.prepareRelease(manifest);release=manifest;message=t("固件已保存，可以连接 ESP 热点后离线上传","Firmware saved. Join the ESP hotspot to upload offline")}},enabled=!busy){Text(t("先下载固件","Download firmware first"))}
-            prepared?.let{manifest->
-                Text(t("已下载，可离线上传：","Ready offline: ")+manifest.getString("version")+" · "+if(manifest.optString("channel")=="preview") t("预览版","Preview") else t("稳定版","Stable"))
-                Button(onClick={job{r.robot.wifi.installPrepared(closeHotspot,previewUpdates);r.robot.disconnect();message=t("升级成功，请断开 ESP 热点并恢复互联网，再使用 AI 陪伴；重连设备核对版本","Update accepted. Leave the ESP hotspot and restore internet before AI companionship; reconnect to verify the version")}},enabled=!busy&&r.robot.wifi.connected&&(manifest.optString("channel")!="preview"||previewUpdates)){Text(t("上传已保存固件","Upload saved firmware"))}
-            }
-            TextButton(onClick={job{command("ota_exit");message=t("已退出升级模式","Update mode exited")}},enabled=!busy){Text(t("退出升级模式","Exit update mode"))}
-            if(busy)LinearProgressIndicator(Modifier.fillMaxWidth());Text(message)
         }
-    },confirmButton={TextButton(onClick=onDismiss,enabled=!busy){Text(t("完成","Done"))}})
+    }
 }
